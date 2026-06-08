@@ -285,6 +285,7 @@ class AgentApp(App):
         self.turns = 0
         self._alive = True
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
+        self.subagents: list = []  # SubagentIO registry (this session)
 
     def compose(self) -> ComposeResult:
         yield SelectableRichLog(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
@@ -425,6 +426,16 @@ class AgentApp(App):
     def body_write(self, renderable) -> None:
         self.query_one("#body", RichLog).write(renderable)
 
+    def register_subagent(self, sub) -> None:
+        self.subagents.append(sub)
+        self.body_write(
+            Text(f"spawned subagent[{sub.n}]: {sub.label}  ·  /subagents to list, "
+                 f"/subagent {sub.n} to watch", style="cyan")
+        )
+
+    def refresh_status(self) -> None:
+        pass  # status bar repaints on its own 1s tick; hook kept for callers
+
     def enter_confirm(self, command: str) -> None:
         self.confirming = True
         self.body_write(Text(f"run `{command}`?  answer below: y / N / a=always", style="bold yellow"))
@@ -474,6 +485,24 @@ class AgentApp(App):
                         style="yellow",
                     )
                 )
+            elif text.startswith("/subagent"):
+                rest = text[len("/subagent"):].lstrip()
+                # /subagents (list)  ·  /subagent N (drill in)
+                if rest.lstrip("s").strip() == "" and not rest[:1].isdigit():
+                    if not self.subagents:
+                        self.body_write(Text("no subagents spawned this session", style="yellow"))
+                    else:
+                        self.body_write(Text("subagents:", style="yellow"))
+                        for s in self.subagents:
+                            self.body_write(Text(f"  [{s.n}] {s.status:<7} {s.label}", style="yellow"))
+                        self.body_write(Text("open one with /subagent <n>", style="yellow"))
+                else:
+                    arg = rest.lstrip("s").strip()
+                    match = next((s for s in self.subagents if str(s.n) == arg), None)
+                    if match:
+                        self.push_screen(SubagentView(match))
+                    else:
+                        self.body_write(Text(f"no subagent {arg!r} — /subagents to list", style="red"))
             elif text.startswith("/rag"):
                 arg = text[len("/rag"):].strip().lower()
                 if arg in ("enable", "on"):
