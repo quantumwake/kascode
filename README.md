@@ -26,10 +26,25 @@ surgical edits, all on your own iron.
   recall (local BM25, on by default) · web_search · web_fetch (opt-in, --net)
 ```
 
+## Requirements
+
+| | Minimum | Recommended |
+|---|---|---|
+| Machine | Apple Silicon (M-series) Mac | M2/M3/M4 Pro/Max/Ultra |
+| macOS | 14 (Sonoma) | latest |
+| Unified memory | **24 GB** (4-bit ≤ ~14B, tight) | **64 GB** (27B/MoE) · 128 GB (80B+) |
+| Free disk | ~20 GB (one 4-bit model) | 100 GB+ (multiple models) |
+| Tooling | [uv](https://docs.astral.sh/uv/) (auto-installed); Python 3.11 (uv-managed) | — |
+
+The model is the memory driver — `Qwen3.6-27B-4bit` (default) needs ~15 GB of
+weights plus KV cache, so **32–64 GB** is the comfortable floor; smaller 4-bit
+models run on 24 GB. The **agent alone** (`kas`, no local server) is portable
+and has no GPU/RAM needs — point it at a remote `--base-url` (see Platforms).
+
 ## Install
 
-kas is **Apple-Silicon-only** (MLX). Installs as the `kas` and `kas-server`
-commands via [uv](https://docs.astral.sh/uv/):
+Installs as the `kas` and `kas-server` commands via
+[uv](https://docs.astral.sh/uv/):
 
 ```sh
 git clone https://github.com/quantumwake/kascli && cd kascli
@@ -78,7 +93,10 @@ Three panels, amber on black:
 - **Multiline paste** — pasted blocks are staged and attached to your next
   message (type an instruction, or just Enter).
 - **Select + copy** — drag-select the work view, `Ctrl-C` copies (`Ctrl-Q` quits).
+- **Subagents** — when the agent delegates, `/subagents` lists them (with
+  status) and `/subagent <n>` opens a scrollable view of what that one is doing.
 - **Slash commands** (tab-complete on `/`): `/yolo` · `/rag enable|disable` ·
+  `/subagents` ·
   `/model` (opens an arrow-key picker) · `/compact` · `/stop` · `/pause` · `/status`.
 
 ## Commands & flags
