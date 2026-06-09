@@ -9,7 +9,9 @@ Three panels:
 """
 
 import json
+import math
 import queue
+import random
 import threading
 import time
 
@@ -29,7 +31,7 @@ from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
-            "/compact", "/stop", "/pause", "/model", "exit"]
+            "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -97,6 +99,77 @@ class SubagentView(ModalScreen):
 
     def action_dismiss(self) -> None:
         self.dismiss(None)
+
+
+class FxBar(Static):
+    """A one-row ambient amber-CRT animation strip — purely for fun.
+
+    Cycles through a few retro effects on its own (twinkle / equalizer wave /
+    comet sweep). Toggle with /fx. Updates a single line, so it's cheap.
+    """
+
+    GLYPHS = "·✦*°⋆+•∙"
+    SHADES = ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"]
+    BARS = " ▁▂▃▄▅▆▇█"
+    EFFECTS = ("twinkle", "wave", "comet")
+
+    def __init__(self) -> None:
+        super().__init__("", id="fx")
+        self._t = 0
+        self._effect = "twinkle"
+        self._cells: list[float] = []
+        self._glyphs: list[str] = []
+
+    def on_mount(self) -> None:
+        self.set_interval(0.12, self._tick)
+
+    def _tick(self) -> None:
+        w = max(0, self.size.width)
+        if w == 0:
+            return
+        self._t += 1
+        if self._t % 70 == 0:  # switch effect now and then, for variety
+            self._effect = random.choice(self.EFFECTS)
+        render = {"twinkle": self._twinkle, "wave": self._wave, "comet": self._comet}[self._effect]
+        self.update(render(w))
+
+    def _twinkle(self, w: int) -> Text:
+        if len(self._cells) != w:
+            self._cells = [0.0] * w
+            self._glyphs = [" "] * w
+        for i in range(w):
+            self._cells[i] *= 0.82  # fade
+        for _ in range(max(1, w // 50)):  # spawn a few new sparks
+            i = random.randrange(w)
+            self._cells[i] = 1.0
+            self._glyphs[i] = random.choice(self.GLYPHS)
+        t = Text()
+        for i in range(w):
+            v = self._cells[i]
+            if v < 0.12:
+                t.append(" ")
+            else:
+                t.append(self._glyphs[i], style=self.SHADES[min(4, int(v * 5))])
+        return t
+
+    def _wave(self, w: int) -> Text:
+        t = Text()
+        for col in range(w):
+            y = math.sin(col * 0.25 + self._t * 0.2) * 0.5 + math.sin(col * 0.07 - self._t * 0.13) * 0.5
+            idx = max(0, min(len(self.BARS) - 1, int((y + 1) / 2 * (len(self.BARS) - 1))))
+            t.append(self.BARS[idx], style=self.SHADES[1 + (idx * 3) // len(self.BARS)])
+        return t
+
+    def _comet(self, w: int) -> Text:
+        pos = (self._t * 2) % (w + 24) - 12
+        t = Text()
+        for i in range(w):
+            d = abs(i - pos)
+            if d > 6:
+                t.append(" ")
+            else:
+                t.append("═" if d <= 2 else "─", style=self.SHADES[max(0, 4 - d)])
+        return t
 
 
 class PasteInput(Input):
@@ -238,6 +311,7 @@ class AgentApp(App):
     Screen { background: #0a0500; color: #ffb000; }
     #body { height: 1fr; padding: 0 1; background: #0a0500; color: #ffb000; }
     #status { height: 1; background: #1a0e00; color: #ff8c00; padding: 0 1; }
+    #fx { height: 1; background: #0a0500; color: #ffb000; padding: 0 1; }
     Input { dock: bottom; background: #1a0e00; color: #ffb000; border: none; }
     Input:focus { border: none; }
     """
@@ -290,6 +364,7 @@ class AgentApp(App):
     def compose(self) -> ComposeResult:
         yield SelectableRichLog(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
         yield Static("", id="status")
+        yield FxBar()
         yield PasteInput(
             placeholder=PLACEHOLDER,
             id="input",
@@ -503,6 +578,10 @@ class AgentApp(App):
                         self.push_screen(SubagentView(match))
                     else:
                         self.body_write(Text(f"no subagent {arg!r} — /subagents to list", style="red"))
+            elif text == "/fx":
+                fx = self.query_one("#fx")
+                fx.display = not fx.display
+                self.body_write(Text(f"fx {'on' if fx.display else 'off'}", style="yellow"))
             elif text.startswith("/rag"):
                 arg = text[len("/rag"):].strip().lower()
                 if arg in ("enable", "on"):
@@ -527,7 +606,7 @@ class AgentApp(App):
                 self.body_write(
                     Text(
                         "commands: /yolo  /rag [enable|disable]  /subagents  /subagent <n>  /status  "
-                        "/compact  /model  /stop (Esc)  /pause (^P) · exit",
+                        "/compact  /model  /fx  /stop (Esc)  /pause (^P) · exit",
                         style="yellow",
                     )
                 )
