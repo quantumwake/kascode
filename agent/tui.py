@@ -689,31 +689,45 @@ class AgentApp(App):
 
     def _status_loop(self) -> None:
         url = self.base_url.rstrip("/") + "/v1/stats"
+        online = True  # last known server reachability (for transition notices)
         while self._alive:
             try:
                 s = httpx.get(url, timeout=2).json()
+                up = True
             except Exception:
-                s = {}
-            if s.get("active"):
-                if s.get("phase") == "prefill":
-                    work = (
-                        f"prefill {s.get('processed', 0)}/{s.get('total', '?')} tok "
-                        f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s"
-                    )
-                else:
-                    work = (
-                        f"generating {s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
-                        f"· {s.get('elapsed', 0):.0f}s"
-                    )
+                s, up = {}, False
+            # announce reachability transitions in the work view (reconnect mark)
+            if up != online:
+                try:
+                    self.call_from_thread(self.body_write, Text(
+                        "● reconnected to server" if up else "○ server unreachable — retrying…",
+                        style="green" if up else "red"))
+                except Exception:
+                    return
+                online = up
+            if not up:
+                conn, conn_style, work = "○ offline", "red", "server unreachable"
+            elif s.get("active") and s.get("phase") == "prefill":
+                conn, conn_style = "◉ prefill", "yellow"
+                work = (f"{s.get('processed', 0)}/{s.get('total', '?')} tok "
+                        f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s · keep-alive")
+            elif s.get("active"):
+                conn, conn_style = "◉ streaming", "green"
+                work = (f"{s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
+                        f"· {s.get('elapsed', 0):.0f}s")
             else:
+                conn, conn_style = "● live", "green"
                 work = "running tools" if self.busy else "idle"
+            line = Text()
+            line.append(conn + " ", style=conn_style)
+            line.append(f"· {self.model} · yolo {'ON' if self.runner.yolo else 'off'} · {work}")
             queued = self.io.steer_q.qsize()
-            line = f"{self.model} · yolo {'ON' if self.runner.yolo else 'off'} · {work}"
             if queued:
-                line += f" · steering queued: {queued}"
+                line.append(f" · steering queued: {queued}")
             if self.subagents:
-                running = sum(1 for s in self.subagents if s.status == "running")
-                line += f" · subagents: {len(self.subagents)}" + (f" ({running} running)" if running else "")
+                running = sum(1 for a in self.subagents if a.status == "running")
+                line.append(f" · subagents: {len(self.subagents)}"
+                            + (f" ({running} running)" if running else ""))
             try:
                 self.call_from_thread(self.update_status, line)
             except Exception:

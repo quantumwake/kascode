@@ -1225,6 +1225,7 @@ def agent_turn(
         tools += WEB_TOOLS
     truncations = 0
     rounds = 0
+    reconnects = 0  # consecutive dropped-connection retries for the current turn
     while True:
         rounds += 1
         if max_rounds is not None and rounds > max_rounds:
@@ -1236,7 +1237,9 @@ def agent_turn(
         aborted = False
         partial: list[dict] = []  # accumulated deltas, kept if interrupted
         try:
-            with client.messages.stream(
+            # max_retries=0: own the retry here so a dropped connection is
+            # surfaced (the SDK's built-in retry is silent).
+            with client.with_options(max_retries=0).messages.stream(
                 model=model,
                 max_tokens=max_tokens,
                 system=SYSTEM if is_subagent else f"{SYSTEM}\n\n{SUBAGENT_HINT}",
@@ -1266,7 +1269,20 @@ def agent_turn(
                                 partial.append(block)
                 if not aborted:
                     response = stream.get_final_message()
-        finally:
+        except (anthropic.APITimeoutError, anthropic.APIConnectionError) as exc:
+            io.stream_finished(None)
+            if partial or reconnects >= 3:
+                raise  # content already shown, or out of retries — give up
+            reconnects += 1
+            io.notice(f"[connection dropped ({type(exc).__name__}) — reconnecting {reconnects}/3…]")
+            rounds -= 1  # a reconnect isn't a real round
+            time.sleep(min(2 * reconnects, 6))
+            continue
+        except BaseException:
+            io.stream_finished(None)  # always stop the heartbeat
+            raise
+        else:
+            reconnects = 0  # this turn's stream completed cleanly
             io.stream_finished(response.usage if response else None)
 
         if aborted:
