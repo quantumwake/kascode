@@ -701,23 +701,24 @@ class AgentApp(App):
                 try:
                     self.call_from_thread(self.body_write, Text(
                         "● reconnected to server" if up else "○ server unreachable — retrying…",
-                        style="green" if up else "red"))
+                        style="#3fb950" if up else "#ff5f5f"))
                 except Exception:
                     return
                 online = up
             if not up:
-                conn, conn_style, work = "○ offline", "red", "server unreachable"
+                conn, conn_style, work = "○ offline", "#ff5f5f", "server unreachable"
             elif s.get("active") and s.get("phase") == "prefill":
-                conn, conn_style = "◉ prefill", "yellow"
+                conn, conn_style = "◓ prefill", "#ffa657"  # amber: warming up
                 work = (f"{s.get('processed', 0)}/{s.get('total', '?')} tok "
                         f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s · keep-alive")
             elif s.get("active"):
-                conn, conn_style = "◉ streaming", "green"
+                conn, conn_style = "◉ streaming", "#39d3e8"  # cyan: data flowing
                 work = (f"{s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
                         f"· {s.get('elapsed', 0):.0f}s")
+            elif self.busy:
+                conn, conn_style, work = "◌ tools", "#c792ea", "running tools"  # violet
             else:
-                conn, conn_style = "● live", "green"
-                work = "running tools" if self.busy else "idle"
+                conn, conn_style, work = "● live", "#3fb950", "idle"  # green
             line = Text()
             line.append(conn + " ", style=conn_style)
             line.append(f"· {self.model} · yolo {'ON' if self.runner.yolo else 'off'} · {work}")
