@@ -705,16 +705,23 @@ class AgentApp(App):
                 except Exception:
                     return
                 online = up
+            age = s.get("last_ping_age")
+            ping = ""
+            if s.get("active") and age is not None:
+                ping = f" · ping {age:g}s ago"
+            stale = age is not None and age > 20  # pings should arrive ~every 5s
             if not up:
                 conn, conn_style, work = "○ offline", "#ff5f5f", "server unreachable"
             elif s.get("active") and s.get("phase") == "prefill":
-                conn, conn_style = "◓ prefill", "#ffa657"  # amber: warming up
+                conn = "◓ prefill" if not stale else "◓ prefill ⚠"
+                conn_style = "#ffa657" if not stale else "#ff5f5f"  # amber, red if pings stalled
                 work = (f"{s.get('processed', 0)}/{s.get('total', '?')} tok "
-                        f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s · keep-alive")
+                        f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s{ping}")
             elif s.get("active"):
-                conn, conn_style = "◉ streaming", "#39d3e8"  # cyan: data flowing
+                conn = "◉ streaming" if not stale else "◉ streaming ⚠"
+                conn_style = "#39d3e8" if not stale else "#ff5f5f"  # cyan, red if pings stalled
                 work = (f"{s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
-                        f"· {s.get('elapsed', 0):.0f}s")
+                        f"· {s.get('elapsed', 0):.0f}s{ping}")
             elif self.busy:
                 conn, conn_style, work = "◌ tools", "#c792ea", "running tools"  # violet
             else:

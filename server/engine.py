@@ -55,6 +55,9 @@ class Engine:
         self._load_error: BaseException | None = None
         # Live generation stats, readable from any thread (GET /v1/stats).
         self.stats: dict[str, Any] = {"active": False}
+        # Keep-alive ping bookkeeping (so clients can see pings are flowing).
+        self.ping_count = 0
+        self.last_ping_ts = 0.0  # time.monotonic() of the most recent ping
         self._thread = threading.Thread(target=self._worker, name="mlx-worker", daemon=True)
         self._thread.start()
         self._ready.wait()
@@ -187,6 +190,8 @@ class Engine:
                 except queue.Empty:
                     # worker still busy (e.g. long prefill) — heartbeat so the
                     # stream keeps flowing and read timeouts don't fire.
+                    self.ping_count += 1
+                    self.last_ping_ts = time.monotonic()
                     yield GenChunk(text="", ping=True)
                     continue
                 if kind == "item":
@@ -214,6 +219,11 @@ class Engine:
             enable_thinking=enable_thinking,
             **getattr(self.dialect, "template_kwargs", {}),
         )
+
+    def ping_status(self) -> dict[str, Any]:
+        """Ping count and seconds since the last keep-alive ping (or None)."""
+        age = round(time.monotonic() - self.last_ping_ts, 1) if self.last_ping_ts else None
+        return {"pings": self.ping_count, "last_ping_age": age}
 
     def cache_snapshot(self, cache_key: str = "main") -> list[int]:
         """Tokens currently held by the named thread's KV cache."""

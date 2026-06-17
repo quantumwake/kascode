@@ -7,7 +7,7 @@ dependencies = [
     "mlx-lm>=0.24",
     "fastapi>=0.115",
     "uvicorn>=0.34",
-    "anthropic>=0.50",
+    "anthropic>=0.109",
     "huggingface-hub",
     "textual>=8.2.7",
     "ddgs>=8.0",

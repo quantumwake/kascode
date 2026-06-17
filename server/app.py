@@ -10,6 +10,7 @@ Point any official Anthropic SDK at it:
 import json
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Iterator
@@ -114,7 +115,9 @@ def select_model(payload: dict[str, Any]):
 def live_stats() -> dict[str, Any]:
     """Live generation progress — polled by clients while the stream is quiet
     (e.g. during a long tool call, whose body is buffered until it closes)."""
-    return {"model": MODEL_ID, **(engine.stats if engine else {"active": False})}
+    if engine is None:
+        return {"model": MODEL_ID, "active": False}
+    return {"model": MODEL_ID, **engine.stats, **engine.ping_status()}
 
 
 def _validate(req: MessagesRequest) -> JSONResponse | None:
@@ -281,6 +284,43 @@ def _run(req: MessagesRequest, thread: str = "main") -> Iterator[dict[str, Any]]
                     blocks.append({"type": kind, field: payload})
                 yield {"kind": kind, "text": payload}
 
+    # Wall-clock keep-alive. The engine only emits chunk.ping when its worker
+    # queue is empty (a silent prefill). During a long tool call the queue is
+    # NOT empty — it's full of token chunks the parser buffers until the
+    # tool_use block closes — so to_events() yields nothing and the SSE stream
+    # goes silent for the whole tool body. The client's httpx read timeout is
+    # per-gap, so that silence trips ReadTimeout even though tokens are flowing.
+    # Emit a ping whenever no event has been sent for KEEPALIVE_SECS, regardless
+    # of why the stream is quiet.
+    KEEPALIVE_SECS = 5.0
+    last_emit = time.monotonic()
+
+    def ping_event() -> dict[str, Any]:
+        # Carry live generation detail so a quiet stream is still informative:
+        # phase ("generate" mid tool-call buffering, "prefill" while warming up),
+        # tokens produced, tok/s, and elapsed. Lets the client render a real
+        # progress line instead of a bare heartbeat.
+        s = engine.stats if engine else {}
+        return {
+            "kind": "ping",
+            "phase": s.get("phase"),
+            "generated": s.get("generated"),
+            "tps": s.get("tps"),
+            "elapsed": s.get("elapsed"),
+            "buffering": parser.state == "tool_call",
+        }
+
+    def keepalive_wrap(events) -> Iterator[dict[str, Any]]:
+        nonlocal last_emit
+        emitted = False
+        for ev in events:
+            emitted = True
+            last_emit = time.monotonic()
+            yield ev
+        if not emitted and time.monotonic() - last_emit >= KEEPALIVE_SECS:
+            last_emit = time.monotonic()
+            yield ping_event()
+
     for chunk in engine.generate(
         prompt_tokens,
         max_tokens=req.max_tokens or DEFAULT_MAX_TOKENS,
@@ -290,7 +330,8 @@ def _run(req: MessagesRequest, thread: str = "main") -> Iterator[dict[str, Any]]
         cache_key=thread,
     ):
         if chunk.ping:
-            yield {"kind": "ping"}
+            last_emit = time.monotonic()
+            yield ping_event()
             continue
         if chunk.done:
             usage["input_tokens"] = chunk.prompt_tokens or usage["input_tokens"]
@@ -311,7 +352,7 @@ def _run(req: MessagesRequest, thread: str = "main") -> Iterator[dict[str, Any]]
                 chunk.finish_reason,
             )
             break
-        yield from to_events(parser.feed(chunk.text))
+        yield from keepalive_wrap(to_events(parser.feed(chunk.text)))
 
     yield from to_events(parser.flush())
 
@@ -413,7 +454,11 @@ def _stream(req: MessagesRequest, thread: str = "main") -> Iterator[str]:
     stop_reason, usage = "end_turn", {"input_tokens": 0, "output_tokens": 0}
     for ev in _run(req, thread):
         if ev["kind"] == "ping":
-            yield _sse("ping", {"type": "ping"})
+            # Anthropic's ping event is normally bare; we attach live progress
+            # under "_stats" (ignored by the SDK, read by our TUI status line).
+            detail = {k: ev[k] for k in ("phase", "generated", "tps", "elapsed", "buffering")
+                      if ev.get(k) is not None}
+            yield _sse("ping", {"type": "ping", **({"_stats": detail} if detail else {})})
         elif ev["kind"] in ("text", "thinking"):
             if block_open != ev["kind"]:
                 yield from close_block()

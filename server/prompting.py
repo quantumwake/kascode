@@ -490,7 +490,10 @@ class StreamParser:
             close = self.dialect.tool_close
             idx = buf.find(close)
             if idx == -1:
-                return out  # tool bodies are short; wait for the close marker
+                # Buffer until the close marker. A tool body can be large (e.g. a
+                # Write of a whole file), so this yields no events for a while —
+                # the server's wall-clock keep-alive ping covers that silence.
+                return out
             out.extend(self._tool_event(buf[:idx]))
             self.buffer = buf[idx + len(close) :]
             self.state = "text"
