@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { VEHICLE_DEFS, VEHICLE_CLASSES, TOOLS } from '../game/constants.js';
-import { ACTIONS, buyVehicle, scrapVehicle, setVehicleRoute } from '../game/state.js';
+import { ACTIONS, buyVehicle, scrapVehicle, getStation } from '../game/state.js';
 
 const CLASS_ICONS = {
   [VEHICLE_CLASSES.TRAIN]: '🚂',
@@ -12,9 +12,14 @@ const CLASS_ICONS = {
 };
 
 export default function VehiclePanel({ state, dispatch, onClose }) {
-  const [tab, setTab] = useState('buy'); // buy, manage, routes
+  const [tab, setTab] = useState('buy'); // buy, manage, route
 
-  const currentYear = state.date.getFullYear();
+  const gs = state.gameState;
+  const currentYear = gs.date.getFullYear();
+
+  // Gather all stations (stations + docks + airports)
+  const allStations = [...(gs.stations || []), ...(gs.docks || []), ...(gs.airports || [])];
+
   const vehiclesByClass = {};
   VEHICLE_DEFS.forEach(v => {
     if (!vehiclesByClass[v.cls]) vehiclesByClass[v.cls] = [];
@@ -22,20 +27,12 @@ export default function VehiclePanel({ state, dispatch, onClose }) {
   });
 
   const handleBuy = (defId) => {
-    // Need a station to buy into
-    const stations = [...state.stations, ...state.docks, ...state.airports];
+    const stations = [...(gs.stations || []), ...(gs.docks || []), ...(gs.airports || [])];
     if (stations.length === 0) {
       dispatch({ type: ACTIONS.CLEAR_NOTIFICATIONS });
-      // Show notification about needing a station
       return;
     }
-    // Buy at first compatible station
     const def = VEHICLE_DEFS[defId];
-    const surfaceType = def.cls === VEHICLE_CLASSES.TRAIN ? 3 : // station
-                        def.cls === VEHICLE_CLASSES.ROAD ? 4 : // bus stop
-                        def.cls === VEHICLE_CLASSES.AIR ? 6 : // airport
-                        def.cls === VEHICLE_CLASSES.WATER ? 7 : 0; // dock
-
     const station = stations.find(s => {
       if (def.cls === VEHICLE_CLASSES.TRAIN) return s.type === 3;
       if (def.cls === VEHICLE_CLASSES.ROAD) return s.type === 4 || s.type === 5;
@@ -43,24 +40,47 @@ export default function VehiclePanel({ state, dispatch, onClose }) {
       if (def.cls === VEHICLE_CLASSES.WATER) return s.type === 7;
       return true;
     });
-
     if (!station) {
       dispatch({ type: ACTIONS.CLEAR_NOTIFICATIONS });
       return;
     }
-
-    const newState = buyVehicle(state, defId, station.id);
-    if (newState !== state) {
+    const newState = buyVehicle(gs, defId, station.id);
+    if (newState !== gs) {
       dispatch({ type: 'UPDATE_GAME_STATE', payload: newState });
     }
   };
 
   const handleScrap = (vehicleId) => {
-    const newState = scrapVehicle(state, vehicleId);
-    if (newState !== state) {
+    const newState = scrapVehicle(gs, vehicleId);
+    if (newState !== gs) {
       dispatch({ type: 'UPDATE_GAME_STATE', payload: newState });
     }
   };
+
+  const handleSetRoute = (vehicleId) => {
+    const vehicle = gs.vehicles.find(v => v.id === vehicleId);
+    if (!vehicle) return;
+    // Enter route mode with the vehicle's current route as starting stops
+    const currentStops = vehicle.route || [];
+    dispatch({ type: 'ENTER_ROUTE_MODE', payload: { vehicleId, stations: currentStops } });
+    setTab('route');
+  };
+
+  const handleApplyRoute = () => {
+    dispatch({ type: 'APPLY_ROUTE' });
+    setTab('manage');
+  };
+
+  const handleCancelRoute = () => {
+    dispatch({ type: 'CANCEL_ROUTE' });
+    setTab('manage');
+  };
+
+  const handleRemoveStop = (stationId) => {
+    dispatch({ type: 'REMOVE_ROUTE_STOP', payload: { stationId } });
+  };
+
+  const routeVehicle = gs.routeMode ? gs.vehicles.find(v => v.id === gs.routeMode.vehicleId) : null;
 
   return (
     <div className="panel" style={{ minWidth: '500px' }}>
@@ -84,8 +104,8 @@ export default function VehiclePanel({ state, dispatch, onClose }) {
               </h3>
               <div className="grid-2">
                 {vehicles.map(def => {
-                  const cost = Math.floor(def.cost * state.costMult);
-                  const canAfford = state.money >= cost;
+                  const cost = Math.floor(def.cost * gs.costMult);
+                  const canAfford = gs.money >= cost;
                   return (
                     <div key={def.id} className="vehicle-item" onClick={() => canAfford && handleBuy(def.id)}>
                       <div className="vehicle-color" style={{ background: def.color }} />
@@ -106,7 +126,7 @@ export default function VehiclePanel({ state, dispatch, onClose }) {
               </div>
             </div>
           ))}
-          {state.stations.length === 0 && state.docks.length === 0 && state.airports.length === 0 && (
+          {(!gs.stations || gs.stations.length === 0) && (!gs.docks || gs.docks.length === 0) && (!gs.airports || gs.airports.length === 0) && (
             <div style={{ padding: '12px', background: 'rgba(231,76,60,0.2)', borderRadius: '4px', color: '#e74c3c' }}>
               ⚠️ Build a station first! You need a station to buy vehicles.
             </div>
@@ -116,19 +136,19 @@ export default function VehiclePanel({ state, dispatch, onClose }) {
 
       {tab === 'manage' && (
         <div>
-          {state.vehicles.length === 0 ? (
+          {gs.vehicles.length === 0 ? (
             <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
               No vehicles yet. Buy one from the "Buy New" tab!
             </div>
           ) : (
-            state.vehicles.map(v => {
+            gs.vehicles.map(v => {
               const def = VEHICLE_DEFS[v.defId];
               if (!def) return null;
               const cargoTotal = v.cargo.reduce((s, c) => s + c.amount, 0);
               return (
                 <div
                   key={v.id}
-                  className={`vehicle-item ${state.selectedVehicle === v.id ? 'selected' : ''}`}
+                  className={`vehicle-item ${gs.selectedVehicle === v.id ? 'selected' : ''}`}
                   onClick={() => dispatch({ type: ACTIONS.SELECT_VEHICLE, payload: v.id })}
                 >
                   <div className="vehicle-color" style={{ background: def.color }} />
@@ -138,19 +158,88 @@ export default function VehiclePanel({ state, dispatch, onClose }) {
                       {v.brokenDown ? '⚠️ Broken Down' : v.state === 'moving' ? '🚀 Moving' :
                        v.state === 'loading' ? '📦 Loading' : v.state === 'unloading' ? '📤 Unloading' : '⏸ Idle'}
                       {cargoTotal > 0 && ` | ${cargoTotal} cargo`}
+                      {v.route.length > 0 && ` | Route: ${v.route.length} stops`}
                     </div>
                   </div>
-                  <button
-                    className="btn btn-danger"
-                    style={{ padding: '4px 8px', fontSize: '11px' }}
-                    onClick={(e) => { e.stopPropagation(); handleScrap(v.id); }}
-                  >
-                    Scrap
-                  </button>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      className="btn"
+                      style={{ padding: '4px 8px', fontSize: '11px' }}
+                      onClick={(e) => { e.stopPropagation(); handleSetRoute(v.id); }}
+                    >
+                      Route
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      style={{ padding: '4px 8px', fontSize: '11px' }}
+                      onClick={(e) => { e.stopPropagation(); handleScrap(v.id); }}
+                    >
+                      Scrap
+                    </button>
+                  </div>
                 </div>
               );
             })
           )}
+        </div>
+      )}
+
+      {tab === 'route' && gs.routeMode && (
+        <div>
+          <div style={{ background: 'rgba(74,122,170,0.2)', padding: '10px', borderRadius: '4px', marginBottom: '12px' }}>
+            <strong>📍 Setting route for {routeVehicle ? VEHICLE_DEFS[routeVehicle.defId]?.name : 'Unknown'} #{(gs.routeMode.vehicleId || 0) + 1}</strong>
+            <p style={{ fontSize: '12px', color: '#aaa', margin: '6px 0 0' }}>
+              Click stations on the map to add them to this route. Need at least 2 stops.
+            </p>
+          </div>
+
+          <h4 style={{ color: '#4a7aaa', fontSize: '13px', marginBottom: '8px' }}>
+            Route Stops ({gs.routeMode.stations.length})
+          </h4>
+
+          {gs.routeMode.stations.length === 0 ? (
+            <div style={{ color: '#888', fontSize: '12px', textAlign: 'center', padding: '12px' }}>
+              Click stations on the map to add stops...
+            </div>
+          ) : (
+            <div style={{ marginBottom: '12px' }}>
+              {gs.routeMode.stations.map((stationId, idx) => {
+                const station = getStation(gs, stationId);
+                if (!station) return null;
+                return (
+                  <div key={`${stationId}-${idx}`} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '6px 8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px',
+                    marginBottom: '4px'
+                  }}>
+                    <span style={{ color: '#4a7aaa', fontWeight: 'bold', minWidth: '20px' }}>#{idx + 1}</span>
+                    <span style={{ flex: 1, fontSize: '12px' }}>
+                      {station.type === 3 ? '🚉' : station.type === 4 ? '🚌' : station.type === 5 ? '🚛' : station.type === 6 ? '✈️' : '🚢'}
+                      {' '}{station.name}
+                    </span>
+                    <button
+                      className="btn btn-danger"
+                      style={{ padding: '2px 6px', fontSize: '10px' }}
+                      onClick={() => handleRemoveStop(stationId)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn btn-success" onClick={handleApplyRoute}
+              disabled={gs.routeMode.stations.length < 2}
+              style={{ flex: 1, opacity: gs.routeMode.stations.length < 2 ? 0.5 : 1 }}>
+              ✓ Apply Route
+            </button>
+            <button className="btn btn-danger" onClick={handleCancelRoute} style={{ flex: 1 }}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>
