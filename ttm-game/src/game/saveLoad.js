@@ -26,6 +26,7 @@ export function saveGame(state, name = 'AutoSave') {
     cameraY: state.cameraY,
     terrain: Array.from(state.terrain),
     features: Array.from(state.features),
+    elevation: Array.from(state.elevation),
     surface: Array.from(state.surface),
     stationMap: Array.from(state.stationMap),
     towns: state.towns,
