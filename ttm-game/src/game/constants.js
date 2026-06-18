@@ -25,6 +25,16 @@ export const TERRAIN_COLORS = {
   [TERRAIN.TUNDRA]: '#b8c8d8',
 };
 
+export const TERRAIN_NAMES = {
+  [TERRAIN.GRASS]: 'Grassland',
+  [TERRAIN.WATER]: 'Water',
+  [TERRAIN.HILLS]: 'Hills',
+  [TERRAIN.MOUNTAIN]: 'Mountain',
+  [TERRAIN.DESERT]: 'Desert',
+  [TERRAIN.SNOW]: 'Snow',
+  [TERRAIN.TUNDRA]: 'Tundra',
+};
+
 // Surface types (built infrastructure)
 export const TILE = {
   NONE: 0,
