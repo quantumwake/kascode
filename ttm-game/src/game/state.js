@@ -195,7 +195,7 @@ export function createNewGame(seed = 42, difficulty = 'normal') {
     buildMode: null,
     cameraX: camX,
     cameraY: camY,
-    zoom: 3,
+    zoom: 1.25,
     selectedVehicle: null,
     hoveredTile: null,
 
