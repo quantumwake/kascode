@@ -116,6 +116,30 @@ function gameReducer(state, action) {
       return { ...state, gameState: { ...gs, loan: gs.loan - repay, money: gs.money - repay, notifications: [...gs.notifications, `Repaid loan: -$${repay}`] } };
     }
 
+    case 'SET_CAMERA': {
+      if (!state.gameState) return state;
+      const gs = state.gameState;
+      return { ...state, gameState: { ...gs, cameraX: action.payload.x, cameraY: action.payload.y } };
+    }
+
+    case 'BUILD_TILE': {
+      if (!state.gameState) return state;
+      const gs = state.gameState;
+      const { x, y, surfaceType, featureType, cost, notification } = action.payload;
+      if (gs.money < cost) return state;
+      const idx = y * MAP_SIZE + x;
+      const newSurface = new Uint8Array(gs.surface);
+      const newFeatures = new Uint8Array(gs.features);
+      if (surfaceType !== undefined) newSurface[idx] = surfaceType;
+      if (featureType !== undefined) newFeatures[idx] = featureType;
+      return { ...state, gameState: { ...gs, surface: newSurface, features: newFeatures, money: gs.money - cost, notifications: [...gs.notifications, notification || ''] } };
+    }
+
+    case 'UPDATE_GAME_STATE': {
+      if (!state.gameState) return state;
+      return { ...state, gameState: { ...state.gameState, ...action.payload } };
+    }
+
     default: return state;
   }
 }
