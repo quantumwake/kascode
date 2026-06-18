@@ -713,26 +713,21 @@ export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMo
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
+
+    // Mouse position relative to canvas center
     const mx = clientX - rect.left - canvas.width / 2;
     const my = clientY - rect.top - canvas.height / 2;
-    const zoom = state.zoom / ISO_W;
-    const range = getVisibleRange();
-    if (!range) return null;
 
-    const camSx = (range.cx - range.cy) * ISO_W / 2 * zoom;
-    const camSy = (range.cx + range.cy) * ISO_H / 2 * zoom;
-
-    const localX = (mx + range.cx * ISO_W / 2 * zoom - camSx) / zoom;
-    const localY = (my + range.cy * ISO_H / 2 * zoom - camSy) / zoom;
-
-    const tileX = Math.floor((localX / ISO_W + localY / ISO_H) / 2);
-    const tileY = Math.floor((localY / ISO_H - localX / ISO_W) / 2);
+    // Inverse isometric transform
+    const zoom = state.zoom;
+    const tileX = Math.floor((mx / (ISO_W / 2) + my / (ISO_H / 2)) / (2 * zoom) + state.cameraX - state.cameraY);
+    const tileY = Math.floor((my / (ISO_H / 2) - mx / (ISO_W / 2)) / (2 * zoom) + state.cameraY);
 
     if (tileX >= 0 && tileX < MAP_SIZE && tileY >= 0 && tileY < MAP_SIZE) {
       return { x: tileX, y: tileY };
     }
     return null;
-  }, [state.zoom, state.cameraX, state.cameraY, getVisibleRange]);
+  }, [state.zoom, state.cameraX, state.cameraY]);
 
   // Mouse handlers
   const handleMouse = useCallback((e) => {
