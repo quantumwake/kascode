@@ -55,6 +55,9 @@ export function gameTick(state) {
 // ---- Vehicle Simulation ----
 
 function simulateVehicles(state) {
+  let totalIncome = 0;
+  let updatedStations = state.stations.map(s => ({ ...s, waitingCargo: { ...s.waitingCargo } }));
+
   const newVehicles = state.vehicles.map(vehicle => {
     if (vehicle.brokenDown) {
       vehicle.breakdownTimer--;
@@ -72,21 +75,25 @@ function simulateVehicles(state) {
 
     // If idle, find cargo
     if (vehicle.state === 'idle') {
-      return tryLoadCargo(state, vehicle);
+      const result = tryLoadCargo(updatedStations, vehicle);
+      if (result.stationsChanged) updatedStations = result.stations;
+      return result.vehicle;
     }
 
     // If loading
     if (vehicle.state === 'loading') {
-      const station = getStation(state, vehicle.stationId);
+      const station = updatedStations.find(s => s.id === vehicle.stationId);
       if (!station) return { ...vehicle, state: 'idle' };
-      const result = loadFromStation(state, station, vehicle);
+      const result = loadFromStation(station, vehicle);
+      if (result.stationsChanged) updatedStations = result.stations;
       const hasC = result.cargo.length > 0;
       return { ...result.vehicle, state: hasC ? 'moving' : 'idle' };
     }
 
     // If unloading
     if (vehicle.state === 'unloading') {
-      const result = unloadAtStation(state, vehicle);
+      const result = unloadAtStation(updatedStations, vehicle);
+      totalIncome += result.income;
       const nextStationId = getNextStationInRoute(result.vehicle);
       if (nextStationId === null) {
         return { ...result.vehicle, state: 'idle', stationId: vehicle.route.length > 0 ? vehicle.route[0] : vehicle.stationId };
@@ -98,9 +105,7 @@ function simulateVehicles(state) {
     return moveVehicle(state, vehicle);
   });
 
-  // Collect any state changes from loading/unloading
-  // (simplified - for full implementation we'd need to merge station changes)
-  return { ...state, vehicles: newVehicles };
+  return { ...state, vehicles: newVehicles, stations: updatedStations, money: state.money + totalIncome };
 }
 
 function hasCargo(vehicle) {
