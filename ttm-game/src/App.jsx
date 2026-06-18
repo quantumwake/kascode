@@ -3,7 +3,7 @@
 import React, { useReducer, useCallback, useEffect, useRef, useState } from 'react';
 import {
   MAP_SIZE, TOOLS, TOOL_NAMES, TOOL_ICONS, BUILD_COSTS, GAME_SPEED, GAME_SPEED_NAMES,
-  MONTH_NAMES, VEHICLE_DEFS, VEHICLE_CLASSES
+  MONTH_NAMES, VEHICLE_DEFS, VEHICLE_CLASSES, TERRAIN, TILE
 } from './game/constants.js';
 import { createNewGame, ACTIONS, buildStation, buyVehicle, scrapVehicle, setVehicleRoute } from './game/state.js';
 import { gameTick } from './game/simulation.js';
