@@ -108,26 +108,22 @@ function simulateVehicles(state) {
   return { ...state, vehicles: newVehicles, stations: updatedStations, money: state.money + totalIncome };
 }
 
-function hasCargo(vehicle) {
-  return vehicle.cargo.length > 0 && vehicle.cargo.some(c => c.amount > 0);
-}
-
-function tryLoadCargo(state, vehicle) {
+function tryLoadCargo(stations, vehicle) {
   const def = VEHICLE_DEFS[vehicle.defId];
-  const station = getStation(state, vehicle.stationId);
-  if (!station) return vehicle;
+  const station = stations.find(s => s.id === vehicle.stationId);
+  if (!station) return { vehicle, stationsChanged: false };
 
   // Check if there's cargo we can carry at this station
   if (def.cargoTypes.includes(0) && station.waitingPassengers > 0) {
-    return { ...vehicle, state: 'loading' };
+    return { vehicle: { ...vehicle, state: 'loading' }, stationsChanged: false };
   }
   if (def.cargoTypes.includes(1) && station.waitingMail > 0) {
-    return { ...vehicle, state: 'loading' };
+    return { vehicle: { ...vehicle, state: 'loading' }, stationsChanged: false };
   }
   for (const cargoId of def.cargoTypes) {
     if (cargoId <= 1) continue;
     if (station.waitingCargo && station.waitingCargo[cargoId] && station.waitingCargo[cargoId] > 0) {
-      return { ...vehicle, state: 'loading' };
+      return { vehicle: { ...vehicle, state: 'loading' }, stationsChanged: false };
     }
   }
 
@@ -135,11 +131,11 @@ function tryLoadCargo(state, vehicle) {
   if (vehicle.route.length > 0) {
     const nextIdx = vehicle.routeIndex + 1;
     if (nextIdx < vehicle.route.length) {
-      return { ...vehicle, routeIndex: nextIdx, state: 'moving' };
+      return { vehicle: { ...vehicle, routeIndex: nextIdx, state: 'moving' }, stationsChanged: false };
     }
   }
 
-  return vehicle;
+  return { vehicle, stationsChanged: false };
 }
 
 function getNextStationInRoute(vehicle) {
@@ -149,10 +145,11 @@ function getNextStationInRoute(vehicle) {
   return vehicle.route[nextIdx];
 }
 
-function loadFromStation(state, station, vehicle) {
+function loadFromStation(station, vehicle) {
   const def = VEHICLE_DEFS[vehicle.defId];
   let remainingCapacity = def.capacity;
   let newCargo = vehicle.cargo.map(c => ({ ...c }));
+  let stationsChanged = false;
 
   // Load passengers
   if (def.cargoTypes.includes(0) && station.waitingPassengers > 0) {
@@ -160,7 +157,9 @@ function loadFromStation(state, station, vehicle) {
     const existing = newCargo.find(c => c.type === 0);
     if (existing) existing.amount += count;
     else newCargo.push({ type: 0, amount: count, source: station.id });
+    station.waitingPassengers -= count;
     remainingCapacity -= count;
+    stationsChanged = true;
   }
 
   // Load mail
@@ -169,7 +168,9 @@ function loadFromStation(state, station, vehicle) {
     const existing = newCargo.find(c => c.type === 1);
     if (existing) existing.amount += count;
     else newCargo.push({ type: 1, amount: count, source: station.id });
+    station.waitingMail -= count;
     remainingCapacity -= count;
+    stationsChanged = true;
   }
 
   // Load goods
@@ -180,30 +181,31 @@ function loadFromStation(state, station, vehicle) {
       const existing = newCargo.find(c => c.type === cargoId);
       if (existing) existing.amount += count;
       else newCargo.push({ type: cargoId, amount: count, source: station.id });
+      station.waitingCargo[cargoId] -= count;
       remainingCapacity -= count;
+      stationsChanged = true;
     }
   }
 
   // Clean up empty cargo entries
   newCargo = newCargo.filter(c => c.amount > 0);
 
-  return { vehicle: { ...vehicle, cargo: newCargo }, income: 0 };
+  return { vehicle: { ...vehicle, cargo: newCargo }, stationsChanged };
 }
 
-function unloadAtStation(state, vehicle) {
+function unloadAtStation(stations, vehicle) {
   const def = VEHICLE_DEFS[vehicle.defId];
-  const destStation = getStation(state, vehicle.stationId);
+  const destStation = stations.find(s => s.id === vehicle.stationId);
   if (!destStation) return { vehicle, income: 0 };
 
   let income = 0;
-  const newCargo = [];
 
   for (const cargo of vehicle.cargo) {
     const cargoDef = CARGO_TYPES[cargo.type];
     if (!cargoDef) continue;
 
     // Calculate distance for fare
-    const sourceStation = getStation(state, cargo.source);
+    const sourceStation = stations.find(s => s.id === cargo.source);
     let distance = 1;
     if (sourceStation && destStation) {
       distance = Math.max(1, Math.hypot(sourceStation.x - destStation.x, sourceStation.y - destStation.y));
@@ -212,11 +214,11 @@ function unloadAtStation(state, vehicle) {
     const fare = Math.floor(cargoDef.value * distance * FARE_PER_TILE);
     income += fare * cargo.amount;
 
-    // Keep some cargo if not all delivered (simplified)
-    // In a full game, we'd track per-destination cargo
+    // Boost service rating for nearby towns
+    // (simplified - in full game, track per-town)
   }
 
-  return { vehicle: { ...vehicle, cargo: newCargo }, income };
+  return { vehicle: { ...vehicle, cargo: [] }, income };
 }
 
 function moveVehicle(state, vehicle) {
