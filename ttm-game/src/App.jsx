@@ -217,12 +217,7 @@ export default function App() {
     initAudio();
 
     if (tile.isMinimap) {
-      // Jump camera to clicked position
-      // We need a custom action for this - let's use MOVE_CAMERA with special flag
-      // Actually, we need to directly set camera position. Let's add a SET_CAMERA action.
-      // For now, let's just dispatch a custom update via the load mechanism
-      const newGs = { ...gs, cameraX: tile.x, cameraY: tile.y };
-      dispatch({ type: ACTIONS.LOAD_GAME, payload: newGs });
+      dispatch({ type: 'SET_CAMERA', payload: { x: tile.x, y: tile.y } });
       return;
     }
 
@@ -234,67 +229,44 @@ export default function App() {
       return;
     }
 
-    // Build / demolish
+    const idx = tile.y * MAP_SIZE + tile.x;
+
+    // Demolish
     if (gs.selectedTool === TOOLS.DEMOLISH) {
-      const idx = tile.y * MAP_SIZE + tile.x;
-      if (gs.surface[idx] !== 0) {
+      if (gs.surface[idx] !== 0 || gs.features[idx] !== 0) {
         const cost = Math.floor(BUILD_COSTS[TOOLS.DEMOLISH] * gs.costMult);
         if (gs.money >= cost) {
           playBuild();
-          const newSurface = new Uint8Array(gs.surface);
-          newSurface[idx] = 0;
-          const newFeatures = new Uint8Array(gs.features);
-          newFeatures[idx] = 0;
-          dispatch({ type: ACTIONS.NEW_GAME, payload: { seed: 0, difficulty: gs.difficulty } });
-          // Actually need proper state update... let me handle in reducer
-        } else {
-          playError();
-        }
+          dispatch({ type: 'BUILD_TILE', payload: { x: tile.x, y: tile.y, surfaceType: 0, featureType: 0, cost, notification: `Demolished (-$${cost})` } });
+        } else { playError(); }
       }
       return;
     }
 
-    // Build tool
-    if (gs.selectedTool >= TOOLS.BUILD_ROAD && gs.selectedTool <= TOOLS.SIGNAL) {
-      const idx = tile.y * MAP_SIZE + tile.x;
-      const cost = Math.floor((BUILD_COSTS[gs.selectedTool] || 0) * gs.costMult);
-
-      // Check if already built here
-      if (gs.surface[idx] !== 0) {
-        playError();
-        return;
+    // Station building
+    if ([TOOLS.BUILD_STATION, TOOLS.BUILD_BUS_STOP, TOOLS.BUILD_TRUCK_STOP,
+         TOOLS.BUILD_AIRPORT, TOOLS.BUILD_DOCK].includes(gs.selectedTool)) {
+      const cost = Math.floor(BUILD_COSTS[gs.selectedTool] * gs.costMult);
+      if (gs.money < cost) { playError(); return; }
+      const newState = buildStation(gs, gs.selectedTool, tile.x, tile.y);
+      if (newState !== gs) {
+        playBuild();
+        dispatch({ type: 'UPDATE_GAME_STATE', payload: newState });
       }
+      return;
+    }
 
-      if (gs.money < cost) {
-        playError();
-        return;
-      }
-
-      // Station building
-      if ([TOOLS.BUILD_STATION, TOOLS.BUILD_BUS_STOP, TOOLS.BUILD_TRUCK_STOP,
-           TOOLS.BUILD_AIRPORT, TOOLS.BUILD_DOCK].includes(gs.selectedTool)) {
-        const newState = buildStation(gs, gs.selectedTool, tile.x, tile.y);
-        if (newState !== gs) {
-          playBuild();
-          // Update app state with new game state
-          dispatch({ type: ACTIONS.LOAD_GAME, payload: newState });
-        }
-        return;
-      }
-
-      // Simple surface build
+    // Simple surface build (road, rail, signal, bridge)
+    if ([TOOLS.BUILD_ROAD, TOOLS.BUILD_RAIL, TOOLS.SIGNAL, TOOLS.BUILD_BRIDGE].includes(gs.selectedTool)) {
+      if (gs.surface[idx] !== 0) { playError(); return; }
+      const surfaceType = gs.selectedTool === TOOLS.BUILD_ROAD ? TILE.ROAD :
+                          gs.selectedTool === TOOLS.BUILD_RAIL ? TILE.RAIL :
+                          gs.selectedTool === TOOLS.SIGNAL ? TILE.SIGNAL : TILE.BRIDGE;
+      const cost = Math.floor(BUILD_COSTS[gs.selectedTool] * gs.costMult);
+      if (gs.money < cost) { playError(); return; }
       playBuild();
-      const surfaceType = gs.selectedTool === TOOLS.BUILD_ROAD ? 1 :
-                          gs.selectedTool === TOOLS.BUILD_RAIL ? 2 :
-                          gs.selectedTool === TOOLS.SIGNAL ? 10 : 0;
-
-      if (surfaceType > 0) {
-        const newSurface = new Uint8Array(gs.surface);
-        newSurface[idx] = surfaceType;
-        const newFeatures = new Uint8Array(gs.features);
-        newFeatures[idx] = 0;
-        dispatch({ type: ACTIONS.LOAD_GAME, payload: { ...gs, surface: newSurface, features: newFeatures, money: gs.money - cost, notifications: [...gs.notifications, `Built ${TOOL_NAMES[gs.selectedTool]} (-$${cost})`] } });
-      }
+      dispatch({ type: 'BUILD_TILE', payload: { x: tile.x, y: tile.y, surfaceType, featureType: 0, cost, notification: `Built ${TOOL_NAMES[gs.selectedTool]} (-$${cost})` } });
+      return;
     }
 
     // Terrain tools
@@ -302,19 +274,17 @@ export default function App() {
       const cost = Math.floor(BUILD_COSTS[gs.selectedTool] * gs.costMult);
       if (gs.money < cost) { playError(); return; }
       playBuild();
-      // Terrain modification would go here
-      dispatch({ type: ACTIONS.LOAD_GAME, payload: { ...gs, money: gs.money - cost, notifications: [...gs.notifications, `Terrain tool (-$${cost})`] } });
+      dispatch({ type: 'BUILD_TILE', payload: { x: tile.x, y: tile.y, cost, notification: `${TOOL_NAMES[gs.selectedTool]} (-$${cost})` } });
+      return;
     }
 
     if (gs.selectedTool === TOOLS.PLANT_TREES) {
-      const idx = tile.y * MAP_SIZE + tile.x;
+      if (gs.terrain[idx] !== TERRAIN.GRASS) return;
       const cost = Math.floor(BUILD_COSTS[TOOLS.PLANT_TREES] * gs.costMult);
       if (gs.money < cost) { playError(); return; }
-      if (gs.terrain[idx] !== 0) return; // Only on grass
+      if (gs.features[idx] !== 0) { playError(); return; }
       playBuild();
-      const newFeatures = new Uint8Array(gs.features);
-      newFeatures[idx] = 1;
-      dispatch({ type: ACTIONS.LOAD_GAME, payload: { ...gs, features: newFeatures, money: gs.money - cost } });
+      dispatch({ type: 'BUILD_TILE', payload: { x: tile.x, y: tile.y, featureType: 1, cost, notification: `Planted tree (-$${cost})` } });
     }
   }, [gs, dispatch]);
 
