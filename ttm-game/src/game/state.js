@@ -308,7 +308,7 @@ function getStationAt(stationMap, x, y) {
   return id > 0 ? id - 1 : null;
 }
 
-function getStation(state, id) {
+export function getStation(state, id) {
   // Check all station types
   for (const s of state.stations) if (s.id === id) return s;
   for (const d of state.docks) if (d.id === id) return d;
@@ -316,7 +316,7 @@ function getStation(state, id) {
   return null;
 }
 
-function getStationAtPos(state, x, y) {
+export function getStationAtPos(state, x, y) {
   const id = getStationAt(state.stationMap, x, y);
   if (id === null) return null;
   return getStation(state, id);
