@@ -6,7 +6,7 @@ import {
   VEHICLE_CLASSES, VEHICLE_CLASS_SURFACE, TOWN_SIZES,
   FARE_PER_TILE, DAYS_PER_MONTH, MONTH_NAMES
 } from './constants.js';
-import { findPath, getStation } from './state.js';
+import { findPath } from './state.js';
 
 // ---- Main tick ----
 
