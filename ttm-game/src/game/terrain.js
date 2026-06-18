@@ -44,8 +44,8 @@ class ValueNoise {
     // Grid cell coordinates
     const xi = Math.floor(x) & 255;
     const yi = Math.floor(y) & 255;
-    const x2 = (xi + 1) & 255;
-    const y2 = (yi + 1) & 255;
+    const xi2 = (xi + 1) & 255;
+    const yi2 = (yi + 1) & 255;
 
     // Relative position within cell
     const xf = x - Math.floor(x);
@@ -57,9 +57,9 @@ class ValueNoise {
 
     // Corner values from permutation table
     const v00 = this.values[this.perm[xi + this.perm[yi]]];
-    const v10 = this.values[this.perm[x2 + this.perm[yi]]];
-    const v01 = this.values[this.perm[xi + this.perm[y2]]];
-    const v11 = this.values[this.perm[x2 + this.perm[y2]]];
+    const v10 = this.values[this.perm[xi2 + this.perm[yi]]];
+    const v01 = this.values[this.perm[xi + this.perm[yi2]]];
+    const v11 = this.values[this.perm[xi2 + this.perm[yi2]]];
 
     // Bilinear interpolation
     const x1 = this.lerp(v00, v10, u);
