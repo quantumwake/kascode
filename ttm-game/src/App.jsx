@@ -77,8 +77,8 @@ function gameReducer(state, action) {
     case ACTIONS.ZOOM: {
       if (!state.gameState) return state;
       const gs = state.gameState;
-      const newZoom = Math.max(1, Math.min(8, gs.zoom + action.payload));
-      return { ...state, gameState: { ...gs, zoom: newZoom } };
+      const newZoom = Math.max(0.25, Math.min(3, gs.zoom + action.payload * 0.25));
+      return { ...state, gameState: { ...gs, zoom: Math.round(newZoom * 100) / 100 } };
     }
 
     case ACTIONS.SHOW_PANEL: {
