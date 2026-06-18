@@ -428,12 +428,25 @@ export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMo
 
   const handleContextMenu = useCallback((e) => e.preventDefault(), []);
 
-  // Scroll wheel zoom
+  // Scroll wheel zoom (passive: false to prevent browser zoom on trackpad)
   const handleWheel = useCallback((e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -1 : 1;
     onCameraZoom(delta);
   }, [onCameraZoom]);
+
+  // Prevent macOS trackpad pinch-zoom on the canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const preventGesture = (e) => e.preventDefault();
+    canvas.addEventListener('gesturestart', preventGesture, { passive: false });
+    canvas.addEventListener('gesturechange', preventGesture, { passive: false });
+    return () => {
+      canvas.removeEventListener('gesturestart', preventGesture);
+      canvas.removeEventListener('gesturechange', preventGesture);
+    };
+  }, []);
 
   const handleMinimapClick = useCallback((e) => {
     const minimap = minimapRef.current;
