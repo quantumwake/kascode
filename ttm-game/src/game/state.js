@@ -157,6 +157,7 @@ export function createNewGame(seed = 42, difficulty = 'normal') {
     // Map data
     terrain,
     features,
+    elevation,
     surface,
     stationMap,
 
