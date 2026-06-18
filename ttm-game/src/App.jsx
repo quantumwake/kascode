@@ -5,7 +5,7 @@ import {
   MAP_SIZE, TOOLS, TOOL_NAMES, TOOL_ICONS, BUILD_COSTS, GAME_SPEED, GAME_SPEED_NAMES,
   MONTH_NAMES, VEHICLE_DEFS, VEHICLE_CLASSES, TERRAIN, TILE
 } from './game/constants.js';
-import { createNewGame, ACTIONS, buildStation, buyVehicle, scrapVehicle, setVehicleRoute } from './game/state.js';
+import { createNewGame, ACTIONS, buildStation, buyVehicle, scrapVehicle, setVehicleRoute, getStationAtPos } from './game/state.js';
 import { gameTick } from './game/simulation.js';
 import { saveGame, loadGame, getSavedGames, deleteSave, loadGameFromFile, saveGameAsFile } from './game/saveLoad.js';
 import { playClick, playBuild, playError, playCash, initAudio } from './audio/sounds.js';
