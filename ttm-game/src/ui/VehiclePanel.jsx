@@ -51,14 +51,14 @@ export default function VehiclePanel({ state, dispatch, onClose }) {
 
     const newState = buyVehicle(state, defId, station.id);
     if (newState !== state) {
-      dispatch({ type: ACTIONS.LOAD_GAME, payload: newState });
+      dispatch({ type: 'UPDATE_GAME_STATE', payload: newState });
     }
   };
 
   const handleScrap = (vehicleId) => {
     const newState = scrapVehicle(state, vehicleId);
     if (newState !== state) {
-      dispatch({ type: ACTIONS.LOAD_GAME, payload: newState });
+      dispatch({ type: 'UPDATE_GAME_STATE', payload: newState });
     }
   };
 
