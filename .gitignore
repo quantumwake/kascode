@@ -8,8 +8,16 @@ __pycache__/
 server.log
 .server.pid
 
-# local experiment artifacts (agent test runs)
+# local experiment artifacts (agent test runs / demo apps the agent builds)
 asteroids-game/
+ttm-game/
+
+# node deps + build output (regenerated via npm install / npm run build)
+node_modules/
+dist/
+
+# stray dir from a botched cp to a literal ~
+~/
 
 .DS_Store
 
