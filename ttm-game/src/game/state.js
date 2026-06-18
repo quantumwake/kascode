@@ -20,6 +20,7 @@ export function createNewGame(seed = 42, difficulty = 'normal') {
 
   const terrain = mapData.terrain;
   const features = mapData.features;
+  const elevation = mapData.elevation;
   const surface = new Uint8Array(MAP_SIZE * MAP_SIZE);
   const stationMap = new Uint8Array(MAP_SIZE * MAP_SIZE);
 
