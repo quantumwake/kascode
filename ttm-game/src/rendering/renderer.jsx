@@ -391,10 +391,42 @@ export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMo
 
     if (tileX >= 0 && tileX < MAP_SIZE && tileY >= 0 && tileY < MAP_SIZE) {
       const tile = { x: tileX, y: tileY };
-      if (e.type === 'click') onTileClick(tile);
-      else onTileHover(tile);
+      if (e.type === 'click' && !dragRef.current) onTileClick(tile);
+      else if (!dragRef.current) onTileHover(tile);
     }
   }, [state.zoom, state.cameraX, state.cameraY, onTileClick, onTileHover]);
+
+  // Right-click / middle-click drag to pan
+  const handleMouseDown = useCallback((e) => {
+    if (e.button === 1 || e.button === 2) { // middle or right click
+      e.preventDefault();
+      dragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startCamX: state.cameraX,
+        startCamY: state.cameraY,
+      };
+    }
+  }, [state.cameraX, state.cameraY]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!dragRef.current) {
+      // Still update hover
+      handleMouse(e);
+      return;
+    }
+    const dx = (e.clientX - dragRef.current.startX) / state.zoom;
+    const dy = (e.clientY - dragRef.current.startY) / state.zoom;
+    const newCamX = Math.max(0, Math.min(MAP_SIZE - 1, dragRef.current.startCamX - dx));
+    const newCamY = Math.max(0, Math.min(MAP_SIZE - 1, dragRef.current.startCamY - dy));
+    if (onCameraMove) onCameraMove({ x: newCamX, y: newCamY });
+  }, [state.zoom, onCameraMove, handleMouse]);
+
+  const handleMouseUp = useCallback(() => {
+    dragRef.current = null;
+  }, []);
+
+  const handleContextMenu = useCallback((e) => e.preventDefault(), []);
 
   const handleMinimapClick = useCallback((e) => {
     const minimap = minimapRef.current;
