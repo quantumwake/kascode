@@ -16,6 +16,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
+from .core.cache import longest_common_prefix
+
 log = logging.getLogger("kas")
 
 # Quantize the KV cache past this many tokens (full-attention layers dominate
@@ -157,7 +159,11 @@ class Engine:
                 evict = self._slot_order.pop(0)
                 self._slots.pop(evict, None)
                 log.info("evicted cache slot %r (LRU)", evict)
-            slot = {"cache": None, "tokens": []}
+            # append_only: has this thread only ever grown by append (no trim)?
+            #   Continuation threads stay True and get KV quantized for free.
+            # quantized: do the cache's full-attention layers hold quantized KV?
+            #   (a quantized cache can't be trimmed — see reuse_cache).
+            slot = {"cache": None, "tokens": [], "append_only": True, "quantized": False}
             self._slots[key] = slot
         else:
             self._slot_order.remove(key)
@@ -253,22 +259,40 @@ class Engine:
             common = 0
             if slot["cache"] is not None:
                 tokens = slot["tokens"]
-                limit = min(len(tokens), len(full) - 1)  # always feed >= 1 token
-                while common < limit and tokens[common] == full[common]:
-                    common += 1
+                common = longest_common_prefix(tokens, full)
                 excess = len(tokens) - common
                 if excess > 0:
-                    if common > 0 and self._can_trim(slot["cache"]):
-                        if self._trim(slot["cache"], excess) == excess:
-                            slot["tokens"] = tokens[:common]
-                        else:  # partially trimmable (rotated sliding window)
-                            slot["cache"] = None
+                    trimmed = (
+                        common > 0
+                        and self._can_trim(slot["cache"])
+                        and self._trim(slot["cache"], excess) == excess
+                    )
+                    if trimmed:
+                        # A live trim succeeded, so this thread genuinely uses
+                        # the trimmable-cache path; stop quantizing it (a
+                        # quantized cache can't be trimmed). Threads that only
+                        # ever append (the continuation case) never reach here,
+                        # so they keep quantizing exactly as before.
+                        slot["append_only"] = False
+                        slot["tokens"] = tokens[:common]
                     else:
+                        # Rotated sliding window, or quantized (untrimmable)
+                        # layers — must reset and re-prefill. Log when it's the
+                        # quantization cliff so it's measurable, not silent.
+                        if slot["quantized"]:
+                            log.info(
+                                "cache reset: %d-token trim needed but cache is "
+                                "quantized (untrimmable) — full re-prefill", excess,
+                            )
                         slot["cache"] = None
             if slot["cache"] is None:
+                # Fresh cache: append-only again until a trim proves otherwise,
+                # so post-reset threads resume quantizing like the original did.
                 common = 0
                 slot["cache"] = self._make_prompt_cache(self.model)
                 slot["tokens"] = []
+                slot["quantized"] = False
+                slot["append_only"] = True
             return common
 
         def produce() -> Iterator[GenChunk]:
@@ -299,7 +323,11 @@ class Engine:
                 # whose reads grow with context). Do NOT pass kv_bits to
                 # mlx_lm — its blanket path also tries to quantize Gemma-4's
                 # RotatingKVCache layers, which raises "Quantization NYI".
-                if KV_BITS:
+                # Quantize ONLY append-only (continuation) threads: a quantized
+                # KV cache can't be trimmed, so quantizing a thread that later
+                # re-renders would force a full-context re-prefill on its next
+                # trim. Append-only threads never trim, so this is free.
+                if KV_BITS and slot["append_only"]:
                     converted = 0
                     for i, c in enumerate(slot["cache"]):
                         if isinstance(c, self._KVCache) and c.offset > QUANTIZED_KV_START:
@@ -308,6 +336,7 @@ class Engine:
                             )
                             converted += 1
                     if converted:
+                        slot["quantized"] = True
                         log.info(
                             "quantized %d full-attention KV caches to %d-bit", converted, KV_BITS
                         )

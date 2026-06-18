@@ -47,11 +47,14 @@ perf: ## summarize request performance from the server log
 	@uv run python scripts/perf_report.py $(LOG)
 
 agent: ## run the agent REPL (ARGS="--yolo --workdir ~/proj")
-	@uv run python -m agent.main $(ARGS)
+	@uv run python -m agent $(ARGS)
 
-test: ## run parser + protocol tests (no model needed)
+test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_parser.py
 	@uv run python tests/test_api.py
+	@uv run python tests/test_continuation.py
+	@uv run python tests/test_cache.py
+	@uv run python tests/test_tools.py
 
 download: ## download model weights (MODEL=...)
 	@HF_XET_HIGH_PERFORMANCE=1 uv run hf download $(MODEL)

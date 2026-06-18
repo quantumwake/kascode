@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-kas = "agent.main:main"
+kas = "agent.cli:main"
 kas-server = "server.cli:main"
 
 [build-system]

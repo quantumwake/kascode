@@ -338,6 +338,7 @@ class AgentApp(App):
         net: bool = False,
         rag: bool = False,
         context_limit: int | None = None,
+        sandbox: bool = False,
     ):
         super().__init__()
         self.client = client
@@ -350,7 +351,7 @@ class AgentApp(App):
         self.io = TuiIO(self)
         self.runner = core.ToolRunner(
             workdir, yolo=yolo, io=self.io, checkpoint=checkpoint, net=net, rag=rag,
-            context_limit=context_limit,
+            context_limit=context_limit, sandbox=sandbox,
         )
         self.store = store or core.SessionStore(workdir)
         self.msg_q: "queue.Queue[str | None]" = queue.Queue()

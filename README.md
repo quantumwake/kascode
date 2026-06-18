@@ -191,12 +191,26 @@ make download MODEL=…         fetch weights only
 
 ## Layout
 
+Hexagonal (ports & adapters) — domain logic in `core/`, edges as `ports/`
+Protocols, concrete I/O in `adapters/`. See
+[`docs/architecture/REFACTOR-hexagonal.md`](docs/architecture/REFACTOR-hexagonal.md).
+
 ```text
-server/app.py        /v1/messages (JSON+SSE) · /v1/models[/select] · /v1/stats
-server/cli.py        kas-server entry point
-server/engine.py     MLX worker thread · per-thread KV cache · quantization
-server/prompting.py  Gemma/Qwen dialects · stream parser · continuation tails
-agent/main.py        kas entry point · agent loop · tools · sessions · compaction
-agent/tui.py         amber-on-black Textual TUI · steering · paste · /commands
-agent/rag.py         local BM25 recall over code/docs/memory
+server/app.py              composition root: FastAPI app, lifecycle, routes, state
+server/cli.py              kas-server entry point
+server/config.py           served model id · default token cap
+server/engine.py           MLX worker thread · per-thread KV cache · quantization
+server/core/               continuation memo · generate→events pipeline · cache math · ports
+server/adapters/http/      Anthropic SSE framing · non-streaming aggregation
+server/prompting/          Gemma/Qwen dialects · stream parser · translation · continuation tails
+
+agent/cli.py               kas entry point: argparse, wiring, serve daemon
+agent/config.py            env config · server probes
+agent/core/                loop · compaction · prompts · tool schemas · transcript · subagent
+agent/ports/               AgentIO · ToolExecutor Protocols
+agent/adapters/ui/         ConsoleIO/Heartbeat · TUI
+agent/adapters/tools/      ToolRunner · bash(PTY) · files(+sandbox) · web · recall
+agent/adapters/retrieval/  local BM25 recall over code/docs/memory
+agent/adapters/workspace/  per-turn git checkpoints
+agent/adapters/storage/    session transcripts · compaction archives
 ```
