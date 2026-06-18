@@ -291,9 +291,8 @@ export default function App() {
   // ---- Tile Hover Handler ----
   const handleTileHover = useCallback((tile) => {
     if (!gs) return;
-    // Update hovered tile in state
-    // We'll handle this in the renderer via state
-  }, [gs]);
+    dispatch({ type: 'UPDATE_GAME_STATE', payload: { hoveredTile: tile } });
+  }, [gs, dispatch]);
 
   // ---- New Game ----
   const handleNewGame = useCallback((seed, difficulty) => {
