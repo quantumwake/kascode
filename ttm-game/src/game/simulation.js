@@ -223,12 +223,14 @@ function unloadAtStation(stations, vehicle) {
 
 function moveVehicle(state, vehicle) {
   const def = VEHICLE_DEFS[vehicle.defId];
-  const targetStation = getStation(state, vehicle.stationId);
+  const targetStation = state.stations.find(s => s.id === vehicle.stationId) ||
+                        state.docks.find(d => d.id === vehicle.stationId) ||
+                        state.airports.find(a => a.id === vehicle.stationId);
   if (!targetStation) return { ...vehicle, state: 'idle' };
 
   // Already at target
   if (vehicle.x === targetStation.x && vehicle.y === targetStation.y) {
-    if (hasCargo(vehicle)) {
+    if (vehicle.cargo.length > 0) {
       return { ...vehicle, state: 'unloading' };
     }
     if (vehicle.route.length > 0) {
