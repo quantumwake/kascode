@@ -431,6 +431,13 @@ class AgentApp(App):
         threading.Thread(target=do_swap, daemon=True).start()
 
     def action_interrupt(self) -> None:
+        # Escape is a priority binding, so it fires app-wide — even over a modal,
+        # whose own escape→dismiss would otherwise be shadowed. So if a modal is
+        # open (subagent view, model picker), close THAT first instead of
+        # interrupting the response running underneath.
+        if len(self.screen_stack) > 1:
+            self.screen.dismiss()
+            return
         if self.busy:
             self.io.abort.set()
             self.body_write(Text("[interrupting…]", style="yellow"))
