@@ -4,7 +4,12 @@ subagent; RAG_TOOLS with --rag; WEB_TOOLS with --net), and the ToolRunner
 adapter implements them.
 """
 
-SUBAGENT_MAX_ROUNDS = 20
+import os
+
+# Default subagent round budget when the caller doesn't specify one, and the
+# hard ceiling a caller-requested budget is clamped to (the volcano guard).
+SUBAGENT_MAX_ROUNDS = int(os.environ.get("KAS_SUBAGENT_ROUNDS", "25"))
+SUBAGENT_ROUNDS_CAP = int(os.environ.get("KAS_SUBAGENT_ROUNDS_CAP", "60"))
 
 SUBAGENT_TOOL: dict = {
     "name": "subagent",
@@ -28,6 +33,14 @@ SUBAGENT_TOOL: dict = {
             "report": {
                 "type": "string",
                 "description": "What the final report back to you must contain",
+            },
+            "max_rounds": {
+                "type": "integer",
+                "description": (
+                    "How many tool-call rounds the subagent may use — scale to task "
+                    f"complexity (default {SUBAGENT_MAX_ROUNDS}, max {SUBAGENT_ROUNDS_CAP}). "
+                    "Give bigger/multi-step tasks more; trivial ones fewer."
+                ),
             },
         },
         "required": ["task"],

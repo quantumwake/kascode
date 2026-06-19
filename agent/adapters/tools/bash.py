@@ -45,6 +45,7 @@ class BashSession:
         import pty
 
         self.command = command
+        self.idle_waits = 0  # consecutive silent reads — escalates the wait + the guidance
         self.master, slave = pty.openpty()
         self.proc = subprocess.Popen(
             command,
@@ -68,6 +69,9 @@ class BashSession:
         """
         start = last_data = time.time()
         chunks: list[bytes] = []
+        # Escalate the idle threshold for repeated silent waits, so a quiet
+        # long-running process is polled less and less often (10s, 20s, … 60s).
+        idle_limit = min(self.IDLE_TIMEOUT * (self.idle_waits + 1), 60.0)
         while True:
             ready, _, _ = select.select([self.master], [], [], 0.25)
             if ready:
@@ -82,7 +86,7 @@ class BashSession:
                 last_data = time.time()
             elif not self.alive():
                 return self._decode(chunks), "exited"
-            elif time.time() - last_data > self.IDLE_TIMEOUT:
+            elif time.time() - last_data > idle_limit:
                 return self._decode(chunks), "waiting"
             if time.time() - start > self.WAIT_TIMEOUT:
                 return self._decode(chunks), "timeout"

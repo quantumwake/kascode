@@ -13,9 +13,17 @@ import httpx
 from .. import config
 from ..config import _truncate
 from .compaction import classify_compaction, run_compaction
-from .prompts import SUBAGENT_HINT, SYSTEM, TRUNCATION_NOTE
+from .prompts import ROUND_WRAPUP_NOTE, SUBAGENT_HINT, SYSTEM, TRUNCATION_NOTE
 from .subagent import SubagentIO
-from .toolspec import IMAGE_TOOLS, RAG_TOOLS, SUBAGENT_MAX_ROUNDS, SUBAGENT_TOOL, TOOLS, WEB_TOOLS
+from .toolspec import (
+    IMAGE_TOOLS,
+    RAG_TOOLS,
+    SUBAGENT_MAX_ROUNDS,
+    SUBAGENT_ROUNDS_CAP,
+    SUBAGENT_TOOL,
+    TOOLS,
+    WEB_TOOLS,
+)
 from .transcript import turn_label
 
 _subagent_seq = 0
@@ -39,8 +47,14 @@ def run_subagent(
     _subagent_seq += 1
     n = _subagent_seq
     thread = f"sub-{n}"  # own KV-cache slot + memo, isolated from main
+    # The parent picks the round budget by task complexity; clamp to the ceiling.
+    requested = (args or {}).get("max_rounds")
+    try:
+        budget = max(1, min(int(requested), SUBAGENT_ROUNDS_CAP)) if requested else SUBAGENT_MAX_ROUNDS
+    except (TypeError, ValueError):
+        budget = SUBAGENT_MAX_ROUNDS
     label = task[:100].splitlines()[0]
-    io.notice(f"[subagent[{n}] ▶ {label}…]")
+    io.notice(f"[subagent[{n}] ▶ {label}… (≤{budget} rounds)]")
     sub_io = SubagentIO(io, label=label, n=n)
     if hasattr(io, "subagent_started"):
         io.subagent_started(sub_io)
@@ -55,7 +69,7 @@ def run_subagent(
             max_tokens=max_tokens,
             compact_at=0,  # bounded by rounds instead
             is_subagent=True,
-            max_rounds=SUBAGENT_MAX_ROUNDS,
+            max_rounds=budget,
             thread=thread,
         )
     except Exception as exc:
@@ -289,7 +303,15 @@ def agent_turn(
                 )
             return
 
-        messages.append({"role": "user", "content": results + steers})
+        content_back: list = results + steers
+        # Soft landing for a round-budgeted run (subagents): a round before the
+        # hard cap, tell the model to wrap up and report — so hitting the limit
+        # yields a usable summary instead of getting cut off mid-tool-call.
+        if max_rounds is not None and rounds >= max_rounds - 1:
+            content_back = content_back + [
+                {"type": "text", "text": ROUND_WRAPUP_NOTE.format(rounds=rounds, max_rounds=max_rounds)}
+            ]
+        messages.append({"role": "user", "content": content_back})
 
         # Mid-sequence: only the HARD context-overflow limit may compact here —
         # compacting in the middle of a multi-step operation (e.g. a chunked

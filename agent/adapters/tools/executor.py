@@ -98,25 +98,47 @@ class ToolRunner:
 
     def _session_report(self) -> tuple[str, bool]:
         assert self.session is not None
-        out, status = self.session.read_until_idle()
+        sess = self.session
+        out, status = sess.read_until_idle()
         if status == "exited":
-            code = self.session.proc.returncode
-            self.session.close()
+            code = sess.proc.returncode
+            sess.close()
             self.session = None
             if code:
                 out += f"\n[exit code {code}]"
             return _truncate(out.strip() or "(no output)"), bool(code)
-        hint = (
-            "no output for 10s — it is probably waiting for input"
-            if status == "waiting"
-            else "still producing output after 120s"
-        )
-        return (
-            _truncate(out)
-            + f"\n[process still running: {hint}. Use bash_send_input to answer a "
-            "prompt, bash_wait to keep waiting, or bash_kill to stop it.]",
-            False,
-        )
+
+        # Still running. Track consecutive *silent* waits so we can escalate the
+        # guidance — and eventually stop the model from looping on bash_wait.
+        if out.strip():
+            sess.idle_waits = 0  # made progress this read
+        elif status == "waiting":
+            sess.idle_waits += 1
+        waits = sess.idle_waits
+
+        if status == "timeout":  # busy: still producing output after 120s
+            note = ("still producing output after 120s. bash_wait to keep waiting, "
+                    "or bash_kill to stop it.")
+        elif waits >= 3:
+            # Break the livelock: leave it running (PTY child is its own session)
+            # and free the shell so the agent can do something useful.
+            cmd = sess.command
+            self.session = None
+            return (
+                _truncate(out)
+                + f"\n[no output across {waits} waits — left `{cmd}` running in the background "
+                "and freed the shell. If it's a server it's ready: use it (curl/open it) or run "
+                "other commands; if it's stuck, find and kill its PID. Do NOT bash_wait it again.]",
+                False,
+            )
+        elif waits >= 2:
+            note = (f"silent for {waits} waits — almost certainly a ready long-running process "
+                    "(dev server/watcher) or stuck, NOT waiting for input. Stop calling bash_wait: "
+                    "move on and use it, or bash_kill it.")
+        else:
+            note = ("no output for a while — it may be waiting for input. Answer with "
+                    "bash_send_input, keep waiting with bash_wait, or stop with bash_kill.")
+        return _truncate(out) + f"\n[process still running: {note}]", False
 
     def tool_bash(self, command: str) -> tuple[str, bool]:
         if self.session is not None and self.session.alive():

@@ -12,8 +12,17 @@ start_line/end_line) instead of the whole file.
 Your output budget per response is limited: build large NEW files in chunks of
 at most ~150 lines each (write_file, then write_file with append=true), never
 in one giant call.
+Long-running processes: start servers/watchers in the BACKGROUND (append ` &`)
+so you keep control — never bash_wait a server that is already serving; it won't
+exit and you'll loop. Use it (curl/open) or move on.
 When the task is complete, summarize what you did in one or two sentences.\
 """
+
+ROUND_WRAPUP_NOTE = (
+    "[automated notice] You are nearing your round budget (round {rounds} of {max_rounds}). "
+    "Wrap up NOW: stop calling tools and give your final report/summary — otherwise you'll be "
+    "cut off without one."
+)
 
 SUBAGENT_HINT = """\
 Context budget: your context window is a scarce resource. Delegate bulky,
