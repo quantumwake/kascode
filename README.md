@@ -24,6 +24,7 @@ surgical edits, all on your own iron.
        ▼
   bash(PTY) · read_file · write_file · edit_file · list_dir · subagent
   recall (local BM25, on by default) · web_search · web_fetch (opt-in, --net)
+  generate_image (local FLUX via mflux, opt-in, --art)
 ```
 
 ## Requirements
@@ -56,6 +57,15 @@ Or, with repo access, a one-liner (bootstraps uv + installs from git):
 ```sh
 curl -fsSL https://raw.githubusercontent.com/quantumwake/kascli/main/install.sh | sh
 ```
+
+Opt-in tool backends are **optional extras** (the core install pulls neither):
+
+```sh
+uv add ddgs trafilatura     # web_search / web_fetch   (--net)   ·  extra: web
+uv add mflux                # generate_image (FLUX/MLX) (--art)  ·  extra: art
+```
+
+Each tool degrades gracefully with an install hint if its package is absent.
 
 ## Quick start
 
@@ -94,10 +104,16 @@ Three panels, amber on black:
   message (type an instruction, or just Enter).
 - **Select + copy** — drag-select the work view, `Ctrl-C` copies (`Ctrl-Q` quits).
 - **Subagents** — when the agent delegates, `/subagents` lists them (with
-  status) and `/subagent <n>` opens a scrollable view of what that one is doing.
+  status) and `/subagent <n>` opens a scrollable view of what that one is doing
+  (`Esc` closes it). The parent sizes each subagent's round budget by task.
+- **Context window** — `/ctx` shows window / usage / compaction policy;
+  `/ctx <n|max|auto>` sets when to compact (`max` rides up to the hard limit).
+- **Ambient fx bar** — reacts to what the agent's doing (idle/prefill/generate/
+  tools); `/fx <effect|auto|on|off|list>` to drive it.
 - **Slash commands** (tab-complete on `/`): `/yolo` · `/rag enable|disable` ·
-  `/subagents` ·
-  `/model` (opens an arrow-key picker) · `/compact` · `/stop` · `/pause` · `/status`.
+  `/ctx` · `/kv` · `/art` · `/fx` · `/subagents` · `/subagent <n>` ·
+  `/model` (arrow-key picker, shows size + partial/full) · `/compact` ·
+  `/stop` (Esc, also cancels a long prefill) · `/pause` · `/status`.
 
 ## Commands & flags
 
@@ -114,9 +130,11 @@ kas-server                run the server in the foreground directly
 --max-tokens N             output cap per response                  (16384)
 --compact-at N             auto-compact past N input tokens        (120000)
 --rag / --no-rag           local recall tool  (on by default; offline)
---net                      enable web_search / web_fetch  (off by default)
+--net                      enable web_search / web_fetch  (off · needs 'web' extra)
+--art                      enable generate_image (FLUX/MLX) (off · needs 'art' extra)
+--sandbox                  jail file tools to the workdir (reject ../ + absolute escapes)
 --checkpoint               per-turn git commits even in an existing repo
---resume [ID]              continue a saved session (latest if no id)
+--resume [ID]              continue a saved session (latest if no id) — warm KV
 --sessions                 list resumable sessions, then exit
 --plain                    line REPL instead of the TUI
 ```
@@ -138,10 +156,22 @@ kas-server                run the server in the foreground directly
   and past session memory, so compaction stays lossless. Complements grep;
   fully offline. (A hybrid vector half can layer on later.)
 - **sessions** — every turn autosaved; `--resume` continues mid-task work.
+- **warm resume** (`/kv`, on by default) — each thread's KV cache is persisted as
+  incremental deltas under the session dir, so `--resume` rehydrates instead of
+  cold-prefilling the whole transcript. Fail-safe (falls back to cold prefill);
+  set `KAS_KV_PERSIST=0` to disable.
+- **cancellable prefill** — `Esc` (`POST /v1/cancel`) stops an in-flight prefill
+  immediately, not just between tokens — and frees the worker for a model swap.
 - **checkpoints** (`--checkpoint`) — output dirs become git repos; every turn is
   a commit on a pre-agent baseline (git revert = undo a turn).
+- **sandbox** (`--sandbox`) — opt-in jail confining the file tools to the workdir
+  (rejects absolute paths and `../` escapes); off by default.
+- **image generation** (`--art`) — `generate_image` renders PNGs with a local
+  diffusion model (FLUX via mflux on the Apple GPU); the model writes the file
+  and gets back a path (bytes never enter the token stream). Use a fixed `seed`
+  + a shared style for consistent sprite sets.
 - **hot-swap** — `/model [n]` (or `POST /v1/models/select`) swaps the served
-  model live, no restart.
+  model live, no restart; the picker shows each model's size + partial/full.
 
 ## Models
 
@@ -165,8 +195,14 @@ Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
   KAS_COMPACT_AT     auto-compaction        (120000 · 0 disables)
   KAS_COMPACT_TPS    compact below tok/s    (8.0 · 0 disables)
   KAS_KV_BITS        KV quantization        (8 · "" disables)
+  KAS_KV_PERSIST     warm-resume KV to disk (on · =0 disables)
   KAS_RAG            =0 disables recall      (on by default)
   KAS_NET            =1 enables web tools    (off · kas is offline)
+  KAS_ART            =1 enables generate_image (off · needs mflux)
+  KAS_SANDBOX        =1 jails file tools to the workdir (off)
+  KAS_SUBAGENT_ROUNDS  default subagent round budget    (25 · cap 60)
+  KAS_ART_MODEL      mflux model for --art  (flux2-klein-4b)
+  KAS_ART_STYLE      style preamble prepended to every image prompt
 ```
 
 ## Make targets
@@ -174,7 +210,7 @@ Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
 ```text
 make start [MODEL=… PORT=…]   download (with progress) + boot server
 make stop / restart / status / logs / perf
-make test                     parser + protocol tests (no model needed)
+make test                     parser · protocol · continuation · cache · tools · compaction (no model)
 make install                  install kas + kas-server to PATH
 make download MODEL=…         fetch weights only
 ```
