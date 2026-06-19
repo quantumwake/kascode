@@ -29,7 +29,8 @@ KEEPALIVE_SECS = 5.0
 
 
 def run(
-    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main"
+    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main",
+    persist_dir: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Generate and yield normalized events (see module docstring)."""
     assert engine is not None
@@ -108,6 +109,7 @@ def run(
         top_p=req.top_p,
         stop_sequences=req.stop_sequences,
         cache_key=thread,
+        persist_dir=persist_dir,
     ):
         if chunk.ping:
             last_emit = time.monotonic()
@@ -146,4 +148,16 @@ def run(
         "id2name": {c["id"]: c["name"] for c in parser.tool_calls},
         "finish": "stop" if stop_reason in ("end_turn", "tool_use") else "other",
     }
+    if persist_dir:
+        # Persist the continuation memo alongside the KV deltas so a resumed
+        # turn can actually hit the restored cache (raw-stream continuation),
+        # not just hold it. Best-effort.
+        try:
+            from . import kvpersist
+
+            kvpersist.write_json(
+                kvpersist.memo_path(kvpersist.thread_dir(persist_dir, thread)), memos[thread]
+            )
+        except Exception:
+            pass
     yield {"kind": "done", "stop_reason": stop_reason, **usage}

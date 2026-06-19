@@ -12,11 +12,12 @@ from ...schema import MessagesRequest
 
 
 def complete(
-    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main"
+    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main",
+    persist_dir: str | None = None,
 ) -> JSONResponse:
     content: list[dict[str, Any]] = []
     stop_reason, usage = "end_turn", {"input_tokens": 0, "output_tokens": 0}
-    for ev in run(req, engine, memos, thread):
+    for ev in run(req, engine, memos, thread, persist_dir):
         if ev["kind"] == "ping":
             continue  # heartbeat only; nothing to aggregate
         if ev["kind"] == "text":

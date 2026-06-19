@@ -90,6 +90,7 @@ class Engine:
             self._can_trim = can_trim_prompt_cache
             self._trim = trim_prompt_cache
             self._load = load
+            self._mx = mx  # for KV-cache delta (de)serialization on this thread
             # One KV-cache slot per conversation thread (main + each subagent),
             # so switching threads restores that thread's cache instead of
             # resetting. LRU-bounded — local single GPU, only a few live at once.
@@ -163,7 +164,8 @@ class Engine:
             #   Continuation threads stay True and get KV quantized for free.
             # quantized: do the cache's full-attention layers hold quantized KV?
             #   (a quantized cache can't be trimmed — see reuse_cache).
-            slot = {"cache": None, "tokens": [], "append_only": True, "quantized": False}
+            slot = {"cache": None, "tokens": [], "append_only": True, "quantized": False,
+                    "saved_offset": 0}  # positions already persisted to disk (KV-resume)
             self._slots[key] = slot
         else:
             self._slot_order.remove(key)
@@ -247,6 +249,7 @@ class Engine:
         top_p: float | None,
         stop_sequences: list[str],
         cache_key: str = "main",
+        persist_dir: str | None = None,
     ) -> Iterator[GenChunk]:
         slot = self._slot(cache_key)
 
@@ -293,6 +296,8 @@ class Engine:
                 slot["tokens"] = []
                 slot["quantized"] = False
                 slot["append_only"] = True
+                slot["saved_offset"] = 0
+                slot["persist_reset"] = True  # on-disk deltas are now stale
             return common
 
         def produce() -> Iterator[GenChunk]:
@@ -377,6 +382,9 @@ class Engine:
                 # except the last sampled one (it was never fed back through).
                 slot["tokens"] = full + gen_ids[:-1]
                 self.stats = {"active": False}
+            if persist_dir:
+                # Append this turn's KV delta to disk (worker thread → mlx-safe).
+                self._persist_kv_delta(cache_key, slot, persist_dir)
             yield GenChunk(
                 text="",
                 done=True,
@@ -390,3 +398,94 @@ class Engine:
             )
 
         return self._submit(produce)
+
+    # --- KV-cache persistence (warm --resume) --------------------------------
+    # Incremental: each turn appends only the new positions' KV to a numbered
+    # delta file under <session>/kvcache/<thread>/, so writes are small. Restored
+    # by replaying the deltas in order. Plain KVCache layers only — quantized /
+    # rotating caches are skipped (resume falls back to a cold prefill), a known
+    # follow-up. Everything here is best-effort: any failure → no persistence,
+    # never a broken turn.
+
+    def _persist_kv_delta(self, thread: str, slot: dict, persist_dir: str) -> None:
+        try:
+            from .core import kvpersist
+
+            cache = slot.get("cache")
+            if cache is None:
+                return
+            if not all(isinstance(c, self._KVCache) for c in cache):
+                return  # quantized/rotating layers: delta-slice not supported yet
+            d = kvpersist.thread_dir(persist_dir, thread)
+            start = slot.get("saved_offset", 0)
+            if slot.pop("persist_reset", False):
+                import shutil
+
+                shutil.rmtree(d, ignore_errors=True)  # stale deltas after a reset
+                start = 0
+            end = int(cache[0].offset)
+            d.mkdir(parents=True, exist_ok=True)
+            if end > start:
+                arrays = {}
+                for i, c in enumerate(cache):
+                    k, v = c.state
+                    arrays[f"{i}.k"] = k[:, :, start:end, :]
+                    arrays[f"{i}.v"] = v[:, :, start:end, :]
+                seq = kvpersist.next_seq(d)
+                self._mx.save_safetensors(
+                    str(kvpersist.delta_path(d, seq)), arrays,
+                    metadata={"start": str(start), "end": str(end)},
+                )
+                slot["saved_offset"] = end
+            kvpersist.write_json(kvpersist.tokens_path(d), slot["tokens"])
+        except Exception as exc:  # never let persistence break generation
+            log.info("kv persist skipped (%s): %s", thread, exc)
+
+    def rehydrate(self, thread: str, persist_dir: str) -> str:
+        """Replay on-disk KV deltas into the thread's slot (if cold). Returns a
+        short status string. Best-effort: on any mismatch the slot is left cold
+        and the next turn prefills normally."""
+
+        def produce() -> Iterator[str]:
+            from .core import kvpersist
+
+            slot = self._slot(thread)
+            if slot.get("cache") is not None and slot.get("tokens"):
+                yield "warm"  # already in memory; nothing to load
+                return
+            try:
+                d = kvpersist.thread_dir(persist_dir, thread)
+                files = kvpersist.delta_files(d)
+                tokens = kvpersist.read_json(kvpersist.tokens_path(d))
+                if not files or not tokens:
+                    yield "cold"
+                    return
+                cache = self._make_prompt_cache(self.model)
+                if not all(isinstance(c, self._KVCache) for c in cache):
+                    yield "cold (non-plain cache)"
+                    return
+                ks: list = [[] for _ in cache]
+                vs: list = [[] for _ in cache]
+                for f in files:
+                    arr = self._mx.load(str(f))
+                    for i in range(len(cache)):
+                        ks[i].append(arr[f"{i}.k"])
+                        vs[i].append(arr[f"{i}.v"])
+                for i, c in enumerate(cache):
+                    c.state = (self._mx.concatenate(ks[i], axis=2),
+                               self._mx.concatenate(vs[i], axis=2))
+                slot["cache"] = cache
+                slot["tokens"] = list(tokens)
+                slot["saved_offset"] = int(cache[0].offset)
+                slot["append_only"] = True
+                slot["quantized"] = False
+                log.info("kv rehydrate: restored %d tokens for %r", cache[0].offset, thread)
+                yield f"rehydrated {cache[0].offset}"
+            except Exception as exc:
+                log.info("kv rehydrate failed (cold) for %r: %s", thread, exc)
+                slot["cache"] = None
+                slot["tokens"] = []
+                slot["saved_offset"] = 0
+                yield "cold"
+
+        return (list(self._submit(produce)) or ["cold"])[-1]

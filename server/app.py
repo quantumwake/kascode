@@ -23,7 +23,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .adapters.http.complete import complete
 from .adapters.http.sse import stream_safe
-from .config import MODEL_ID
+from .config import KV_PERSIST, MODEL_ID
+from .core import kvpersist
 from .core.continuation import echo_matches, norm_blocks, req_key, try_continuation
 from .core.pipeline import run
 from .engine import Engine
@@ -139,13 +140,30 @@ def messages(req: MessagesRequest, request: Request):
     # Each conversation thread (main agent + each subagent) gets its own KV
     # cache slot + continuation memo, keyed by this header.
     thread = request.headers.get("x-agent-thread", "main")
+
+    # Warm KV-resume: if persistence is on and the agent told us its session
+    # dir, rehydrate this thread's KV cache + continuation memo from disk before
+    # the first turn (no-op once the slot is warm in memory). Best-effort.
+    persist_dir = request.headers.get("x-agent-session-dir") if KV_PERSIST else None
+    if persist_dir and engine is not None:
+        try:
+            status = engine.rehydrate(thread, persist_dir)
+            if status.startswith("rehydrated") and thread not in _memos:
+                memo = kvpersist.read_json(
+                    kvpersist.memo_path(kvpersist.thread_dir(persist_dir, thread))
+                )
+                if memo:
+                    _memos[thread] = memo
+        except Exception:
+            log.info("kv rehydrate trigger failed; cold prefill", exc_info=True)
+
     if req.stream:
         return StreamingResponse(
-            stream_safe(req, engine, _memos, thread),
+            stream_safe(req, engine, _memos, thread, persist_dir),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
-    return complete(req, engine, _memos, thread)
+    return complete(req, engine, _memos, thread, persist_dir)
 
 
 # --------------------------------------------------------------------------

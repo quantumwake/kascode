@@ -151,7 +151,11 @@ def compact_messages(
             tools=tools if tools is not None else TOOLS + [SUBAGENT_TOOL],
             thinking={"type": "adaptive"},
             messages=req_messages,
-            extra_headers={"x-agent-thread": thread},
+            extra_headers=(
+                {"x-agent-thread": thread, "x-agent-session-dir": str(store.dir)}
+                if store is not None and getattr(store, "dir", None) is not None
+                else {"x-agent-thread": thread}
+            ),
         ) as stream:
             for event in stream:
                 if event.type != "content_block_delta":

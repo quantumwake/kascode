@@ -41,4 +41,9 @@ class EngineLike(Protocol):
         top_p: float | None,
         stop_sequences: list[str],
         cache_key: str = "main",
+        persist_dir: str | None = None,
     ) -> Iterator[Any]: ...
+
+    # Optional (KV-resume): rehydrate a thread's cache from disk. Adapters that
+    # don't support it simply omit it; callers guard with getattr/try.
+    def rehydrate(self, thread: str, persist_dir: str) -> str: ...
