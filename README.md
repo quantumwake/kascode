@@ -48,14 +48,14 @@ Installs as the `kas` and `kas-server` commands via
 [uv](https://docs.astral.sh/uv/):
 
 ```sh
-git clone https://github.com/quantumwake/kascli && cd kascli
+git clone https://github.com/quantumwake/kascode && cd kascode
 ./install.sh                 # editable install to PATH  (or: make install)
 ```
 
 Or, with repo access, a one-liner (bootstraps uv + installs from git):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/quantumwake/kascli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/quantumwake/kascode/main/install.sh | sh
 ```
 
 Opt-in tool backends are **optional extras** (the core install pulls neither):
