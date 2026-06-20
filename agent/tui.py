@@ -145,16 +145,19 @@ class FxBar(Static):
     # rotates through the pool over time so it never gets boring. prefill is a
     # real progress bar (informational, not rotated); offline is a flatline.
     POOLS = {
-        "idle":       ("twinkle", "plasma", "starfield", "fire", "pulse", "braille", "comet", "heartbeat"),
+        "idle":       ("twinkle", "plasma", "starfield", "fire", "pulse", "braille", "comet",
+                       "heartbeat", "rain", "sine", "ripple", "dna", "marquee", "glitch",
+                       "larson", "bounce", "snake", "meteor", "vu"),
         "prefill":    ("progress",),
-        "generating": ("wave", "plasma", "scanline", "braille"),
-        "tools":      ("comet", "scanline", "starfield", "plasma"),
+        "generating": ("wave", "plasma", "scanline", "braille", "vu", "dna", "meteor", "ripple"),
+        "tools":      ("comet", "scanline", "starfield", "plasma", "larson", "snake", "meteor", "glitch"),
         "offline":    ("flat",),
     }
-    FAST = {"wave", "comet", "scanline", "starfield"}  # advance 2 frames/tick
+    FAST = {"wave", "comet", "scanline", "starfield", "larson", "snake", "meteor", "marquee"}
     # effects a user can pin via `/fx <name>`
-    EFFECTS = ("twinkle", "pulse", "wave", "comet", "plasma", "scanline", "fire",
-               "starfield", "braille", "progress", "heartbeat", "flat")
+    EFFECTS = ("twinkle", "pulse", "wave", "comet", "plasma", "scanline", "fire", "starfield",
+               "braille", "progress", "heartbeat", "flat", "larson", "bounce", "vu", "dna",
+               "ripple", "rain", "marquee", "glitch", "sine", "meteor", "snake")
 
     def __init__(self) -> None:
         super().__init__("", id="fx")
@@ -163,6 +166,7 @@ class FxBar(Static):
         self._rotate_at = 0       # frame to switch effect on
         self._mode: str | None = None
         self._effect = "twinkle"
+        self._cur: str | None = None  # last effect actually rendered (to reset buffers on change)
         self._pin: str | None = None  # forced effect (/fx <name>); None = rotate
         self._cells: list[float] = []
         self._glyphs: list[str] = []
@@ -193,12 +197,18 @@ class FxBar(Static):
                 self._mode = mode
                 self._rotate_at = self._frame + random.randint(100, 180)  # ~10–18s
             effect = self._effect
+        # Effects share the _cells/_glyphs/_stars scratch buffers, so reset them
+        # whenever the effect changes — the new one re-inits them at the current
+        # width (prevents stale-length IndexErrors across effects).
+        if effect != self._cur:
+            self._cells, self._glyphs, self._stars = [], [], []
+            self._cur = effect
         self._t += 2 if effect in self.FAST else 1
         fn = getattr(self, "_" + effect, self._twinkle)
         self.update(fn(w, self.PALETTES[mode]))
 
     def _twinkle(self, w: int, shades: list[str]) -> Text:
-        if len(self._cells) != w:
+        if len(self._cells) != w or len(self._glyphs) != w:
             self._cells = [0.0] * w
             self._glyphs = [" "] * w
         for i in range(w):
@@ -347,6 +357,129 @@ class FxBar(Static):
             else:
                 ch, sh = "─", 1
             t.append(ch, style=shades[sh])
+        return t
+
+    def _larson(self, w: int, shades: list[str]) -> Text:
+        # Cylon/KITT scanner — a bright dot bouncing L↔R with a trailing glow.
+        period = max(1, 2 * (w - 1))
+        p = self._t % period
+        pos = p if p < w else period - p
+        glyph = {0: "█", 1: "▓", 2: "▒", 3: "░"}
+        t = Text()
+        for i in range(w):
+            d = abs(i - pos)
+            t.append(glyph.get(d, " "), style=shades[max(0, 4 - d)])
+        return t
+
+    def _bounce(self, w: int, shades: list[str]) -> Text:
+        period = max(1, 2 * (w - 1))
+        p = self._t % period
+        pos = p if p < w else period - p
+        t = Text()
+        for i in range(w):
+            t.append("●" if i == pos else ("·" if i % 8 == 0 else " "),
+                     style=shades[4 if i == pos else 1])
+        return t
+
+    def _vu(self, w: int, shades: list[str]) -> Text:
+        # random equalizer bars that jump and decay (music-meter feel)
+        if len(self._cells) != w:
+            self._cells = [0.0] * w
+        for i in range(w):
+            self._cells[i] = max(0.0, self._cells[i] - 0.12)
+            if random.random() < 0.10:
+                self._cells[i] = random.random()
+        t = Text()
+        for v in self._cells:
+            t.append(self.BARS[int(v * (len(self.BARS) - 1))], style=shades[min(4, int(v * 5))])
+        return t
+
+    def _dna(self, w: int, shades: list[str]) -> Text:
+        # two interleaved strands
+        t = Text()
+        for col in range(w):
+            a = math.sin(col * 0.3 + self._t * 0.15)
+            b = math.sin(col * 0.3 + self._t * 0.15 + math.pi)
+            ya = int((a + 1) / 2 * (len(self.BARS) - 1))
+            yb = int((b + 1) / 2 * (len(self.BARS) - 1))
+            if ya >= yb:
+                t.append(self.BARS[ya], style=shades[3])
+            else:
+                t.append(self.BARS[yb], style=shades[2])
+        return t
+
+    def _ripple(self, w: int, shades: list[str]) -> Text:
+        c = w // 2
+        t = Text()
+        for i in range(w):
+            d = abs(i - c)
+            v = (math.sin(d * 0.6 - self._t * 0.3) + 1) / 2
+            v *= max(0.15, 1 - d / (w / 1.5 or 1))
+            t.append(self.BARS[int(v * (len(self.BARS) - 1))], style=shades[min(4, int(v * 5))])
+        return t
+
+    def _rain(self, w: int, shades: list[str]) -> Text:
+        if len(self._cells) != w or len(self._glyphs) != w:
+            self._cells = [0.0] * w
+            self._glyphs = [" "] * w
+        for i in range(w):
+            self._cells[i] *= 0.75
+        for _ in range(max(1, w // 28)):
+            i = random.randrange(w)
+            self._cells[i] = 1.0
+            self._glyphs[i] = random.choice("╷│┃╿")
+        t = Text()
+        for i in range(w):
+            v = self._cells[i]
+            t.append(" " if v < 0.15 else self._glyphs[i], style=shades[min(4, int(v * 5))])
+        return t
+
+    def _marquee(self, w: int, shades: list[str]) -> Text:
+        pat = "▰▰▱ "
+        off = self._t % len(pat)
+        t = Text()
+        for i in range(w):
+            ch = pat[(i + off) % len(pat)]
+            t.append(ch, style=shades[3 if ch == "▰" else 1])
+        return t
+
+    def _glitch(self, w: int, shades: list[str]) -> Text:
+        chars = "▚▞▌▐░▒█┃╳"
+        t = Text()
+        for i in range(w):
+            if random.random() < 0.08:
+                t.append(random.choice(chars), style=shades[random.randint(2, 4)])
+            else:
+                t.append("·" if i % 7 == 0 else " ", style=shades[1])
+        return t
+
+    def _sine(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            y = (math.sin(col * 0.2 + self._t * 0.2) + 1) / 2
+            t.append("•" if y > 0.55 else ("·" if y > 0.2 else " "), style=shades[min(4, int(y * 5))])
+        return t
+
+    def _meteor(self, w: int, shades: list[str]) -> Text:
+        pos = (self._t * 2) % (w + 30) - 15
+        t = Text()
+        for i in range(w):
+            d = pos - i  # tail trails to the left
+            if d == 0:
+                t.append("◉", style=shades[4])
+            elif 0 < d < 12:
+                t.append("═" if d < 2 else "─", style=shades[max(0, 4 - d // 3)])
+            else:
+                t.append(" ")
+        return t
+
+    def _snake(self, w: int, shades: list[str]) -> Text:
+        seg = 8
+        head = self._t % w if w else 0
+        t = Text()
+        for i in range(w):
+            d = (head - i) % w
+            t.append("█" if d < seg else " ", style=shades[max(0, 4 - d // 2)] if d < seg else shades[0])
         return t
 
 
