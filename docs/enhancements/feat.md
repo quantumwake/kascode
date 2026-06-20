@@ -27,7 +27,7 @@ Deep-dive designs live in the sibling docs (linked). Updated as we go.
 > quarantined on the throwaway `feat/async-art` (main dir); my work is in a worktree.
 
 ## ⬜ Queued (build next, roughly in order)
-- [ ] Async art (finish): background render, return task id + path, `image_status`
+- [x] Async art — `generate_image` fires a background render → task id + path; `image_status` polls (first piece of the async-dispatch pattern in tools.md)
 - [ ] Image/audio **analysis** — Whisper transcribe tool (simple; whisper models present); VLM image input (bigger)
 - [ ] Voice interface — push-to-talk: mic → Whisper STT → agent → macOS `say` TTS
 - [ ] Embeddings endpoint (`/v1/embeddings`) → hybrid vector RAG (rag.py left the seam)

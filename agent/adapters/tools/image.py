@@ -52,15 +52,21 @@ def _missing_hint() -> str:
     )
 
 
-def generate_image(prompt: str, workdir, path: str | None = None,
-                   seed: int | None = None, steps: int | None = None) -> tuple[str, bool]:
+def resolve_out(workdir, prompt: str, path: str | None) -> pathlib.Path:
+    """Resolve the output PNG path (default assets/generated/<slug>.png under workdir)."""
+    out = pathlib.Path(path) if path else pathlib.Path(config.ART_OUTPUT_DIR) / f"{_slug(prompt)}.png"
+    return out if out.is_absolute() else pathlib.Path(workdir) / out
+
+
+def render(prompt: str, out: pathlib.Path, *, seed: int | None = None,
+           steps: int | None = None) -> tuple[str, bool]:
+    """BLOCKING render of one image to `out` via the mflux CLI. (Run off-thread
+    for async; see ToolRunner.tool_generate_image.)"""
     if not prompt or not prompt.strip():
         return "generate_image requires a non-empty 'prompt'", True
     if shutil.which(config.ART_BIN) is None:
         return _missing_hint(), True
-    out = pathlib.Path(path) if path else pathlib.Path(config.ART_OUTPUT_DIR) / f"{_slug(prompt)}.png"
-    if not out.is_absolute():
-        out = pathlib.Path(workdir) / out
+    out = pathlib.Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = build_command(prompt, out, seed=seed, steps=steps)
     try:
@@ -78,3 +84,9 @@ def generate_image(prompt: str, workdir, path: str | None = None,
         )
     note = f" (seed {seed})" if seed is not None else ""
     return f"wrote image to {out}{note}", False
+
+
+def generate_image(prompt: str, workdir, path: str | None = None,
+                   seed: int | None = None, steps: int | None = None) -> tuple[str, bool]:
+    """Blocking convenience wrapper (resolve path + render)."""
+    return render(prompt, resolve_out(workdir, prompt, path), seed=seed, steps=steps)

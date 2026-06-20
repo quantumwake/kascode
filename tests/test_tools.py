@@ -156,4 +156,34 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "delta file(s)" in out, out
     print("kv_status: OK")
 
+
+# ---------------------------------------------------------------------------
+# generate_image is ASYNC: returns a task id immediately; image_status tracks it
+# ---------------------------------------------------------------------------
+
+import time as _time
+
+with tempfile.TemporaryDirectory() as tmp:
+    r = runner(tmp)
+    assert r.tool_image_status()[0] == "no image tasks this session"
+
+    # fire-and-continue: returns at once with a task id (doesn't block on render)
+    _saved = _cfg.ART_BIN
+    _cfg.ART_BIN = "definitely-not-a-real-binary-xyz"  # render will fail fast in the bg
+    out, err = r.tool_generate_image("a red truck")
+    assert not err and "task #1 started" in out, (out, err)
+
+    # the background task settles to error (backend missing); image_status reflects it
+    line = ""
+    for _ in range(60):
+        line, _e = r.tool_image_status(1)
+        if "running" not in line:
+            break
+        _time.sleep(0.05)
+    _cfg.ART_BIN = _saved
+    assert "#1" in line and "error" in line, line
+    assert "#1" in r.tool_image_status()[0]               # list-all view
+    assert r.tool_image_status(99)[1] and "no image task" in r.tool_image_status(99)[0]
+    print("async image tasks: OK")
+
 print("all tool tests passed")

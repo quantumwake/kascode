@@ -112,12 +112,13 @@ IMAGE_TOOLS: list[dict] = [
     {
         "name": "generate_image",
         "description": (
-            "Generate an image with a LOCAL diffusion model and save it as a PNG. "
-            "Use for game sprites, textures, icons, or concept art. Write a detailed "
-            "prompt (subject, style, view/angle, background). The PNG is written to "
-            "disk and the file path is returned — the image is NOT shown to you. For "
-            "a CONSISTENT set of assets (e.g. a sprite sheet), keep the style wording "
-            "identical across calls and pass a fixed integer `seed` per asset."
+            "Start generating an image with a LOCAL diffusion model — ASYNC: it renders "
+            "in the BACKGROUND and returns IMMEDIATELY with a task id and the output path, "
+            "so you keep working while it renders. Reference the returned path in your code "
+            "right away; the PNG appears there when done (poll with image_status). Use for "
+            "game sprites, textures, icons, concept art. Write a detailed prompt (subject, "
+            "style, view/angle, background). For a CONSISTENT set of assets, keep the style "
+            "wording identical across calls and pass a fixed integer `seed` per asset."
         ),
         "input_schema": {
             "type": "object",
@@ -128,6 +129,20 @@ IMAGE_TOOLS: list[dict] = [
                 "steps": {"type": "integer", "description": "Inference steps (default suits distilled FLUX)"},
             },
             "required": ["prompt"],
+        },
+    },
+    {
+        "name": "image_status",
+        "description": (
+            "Check background image-generation tasks started by generate_image: their "
+            "status (running / done / error) and output paths. Pass a task_id for one, or "
+            "omit to list all. Use it to confirm a sprite finished before relying on it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "A specific task id (omit to list all)"},
+            },
         },
     },
 ]
