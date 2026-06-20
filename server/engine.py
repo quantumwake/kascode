@@ -138,6 +138,10 @@ class Engine:
         self.model, self.tokenizer = self._load(model_id)
         self.model_id = model_id
         self.context_length = self._detect_context_length()
+        try:
+            self.n_layers = len(self._make_prompt_cache(self.model))  # one cache per layer
+        except Exception:
+            self.n_layers = None
         self.dialect = detect_dialect(getattr(self.tokenizer, "chat_template", None))
         self._slots = {}
         self._slot_order = []
@@ -254,6 +258,21 @@ class Engine:
         """Ping count and seconds since the last keep-alive ping (or None)."""
         age = round(time.monotonic() - self.last_ping_ts, 1) if self.last_ping_ts else None
         return {"pings": self.ping_count, "last_ping_age": age}
+
+    def system_stats(self) -> dict[str, Any]:
+        """Model + GPU stats for the /stats panel. Memory queries are cheap and
+        read-only, so they're safe to call off the worker thread."""
+        out: dict[str, Any] = {
+            "layers": getattr(self, "n_layers", None),
+            "context_length": getattr(self, "context_length", None),
+        }
+        try:
+            mx = self._mx
+            out["gpu_active_gb"] = round(mx.get_active_memory() / 1e9, 2)
+            out["gpu_peak_gb"] = round(mx.get_peak_memory() / 1e9, 2)
+        except Exception:
+            pass
+        return out
 
     def cache_snapshot(self, cache_key: str = "main") -> list[int]:
         """Tokens currently held by the named thread's KV cache."""

@@ -17,6 +17,11 @@ import time
 
 import anthropic
 import httpx
+
+try:
+    import psutil  # optional ('stats' extra): CPU/RAM/disk/net for the /stats panel
+except ImportError:
+    psutil = None
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -31,7 +36,7 @@ from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
-            "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
+            "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/stats", "/fx", "/compact", "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -414,6 +419,9 @@ class TuiIO:
         if usage is not None:
             decode_t = max(0.05, (time.time() - self._t0) - (self._ttft or 0))
             self.last_decode_tps = usage.output_tokens / decode_t
+            # cumulative session token totals, for the /stats panel
+            self.app.tok_in += usage.input_tokens
+            self.app.tok_out += usage.output_tokens
             self._write(
                 f"[{usage.input_tokens} in / {usage.output_tokens} out · "
                 f"ttft {self._ttft or 0:.1f}s · {self.last_decode_tps:.1f} tok/s · "
@@ -469,6 +477,7 @@ class AgentApp(App):
     # amber-on-black: retro BBS / amber-CRT
     CSS = """
     Screen { background: #0a0500; color: #ffb000; }
+    #topstats { dock: top; height: 1; background: #140a00; color: #ffb000; padding: 0 1; display: none; }
     #body { height: 1fr; padding: 0 1; background: #0a0500; color: #ffb000; }
     #status { height: 1; background: #1a0e00; color: #ff8c00; padding: 0 1; }
     #fx { height: 1; background: #0a0500; color: #ffb000; padding: 0 1; }
@@ -519,6 +528,10 @@ class AgentApp(App):
         self.busy = False
         self.fx_mode = "idle"  # current state, drives the ambient FxBar animation
         self.fx_stats: dict = {}  # live tps/processed/total for data-driven fx
+        self.tok_in = 0          # cumulative session prompt tokens (for /stats)
+        self.tok_out = 0         # cumulative session generated tokens
+        self.stats_on = False    # /stats panel visible
+        self._io_prev: tuple | None = None  # (disk_bytes, net_bytes, t) for IO rates
         self.confirming = False
         self.turns = 0
         self._alive = True
@@ -526,6 +539,7 @@ class AgentApp(App):
         self.subagents: list = []  # SubagentIO registry (this session)
 
     def compose(self) -> ComposeResult:
+        yield Static("", id="topstats")  # /stats panel, docked top (hidden by default)
         yield SelectableRichLog(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
         yield Static("", id="status")
         yield FxBar()
@@ -709,6 +723,77 @@ class AgentApp(App):
     def update_status(self, line: str) -> None:
         self.query_one("#status", Static).update(line)
 
+    # ---- /stats panel ----
+
+    @staticmethod
+    def _fmt_bytes(n: float) -> str:
+        n = float(n)
+        for u in ("B", "K", "M", "G"):
+            if n < 1024 or u == "G":
+                return f"{n:.0f}{u}" if u in ("B", "K") else f"{n:.1f}{u}"
+            n /= 1024
+        return f"{n:.1f}G"
+
+    @staticmethod
+    def _gauge(frac: float, width: int = 6) -> Text:
+        frac = max(0.0, min(1.0, frac))
+        filled = int(round(frac * width))
+        color = "#3fb950" if frac < 0.7 else ("#ffa657" if frac < 0.9 else "#ff5f5f")
+        t = Text("▕", style="#555555")
+        t.append("█" * filled + "░" * (width - filled), style=color)
+        t.append("▏", style="#555555")
+        return t
+
+    def _stats_line(self, s: dict | None) -> Text:
+        s = s or {}
+        L, V, C = "#8a6a2a", "#ffb000", "#39d3e8"  # label / value / accent colours
+        t = Text()
+        t.append("▌ ", style="#ff9d00")
+        t.append(self.model.split("/")[-1], style="bold #ffb000")
+        t.append("  ")
+        # context window usage
+        cl = s.get("context_length") or getattr(self.runner, "context_limit", None)
+        used = getattr(self.runner, "last_input_tokens", 0)
+        if cl:
+            t.append("ctx ", style=L)
+            t.append_text(self._gauge(used / cl))
+            t.append(f" {used // 1000}k/{cl // 1000}k  ", style=V)
+        if s.get("layers"):
+            t.append("layers ", style=L); t.append(f"{s['layers']}  ", style=V)
+        # GPU memory
+        ga, gp = s.get("gpu_active_gb"), s.get("gpu_peak_gb")
+        if ga is not None:
+            t.append("gpu ", style=L)
+            if gp:
+                t.append_text(self._gauge(ga / gp if gp else 0))
+            t.append(f" {ga}/{gp}GB  " if gp else f" {ga}GB  ", style=C)
+        if s.get("tps"):
+            t.append("tok/s ", style=L); t.append(f"{s['tps']}  ", style=C)
+        t.append("Σ ", style=L)
+        t.append(f"{self.tok_in // 1000}k↑ {self.tok_out // 1000}k↓  ", style="#c792ea")
+        # system metrics (optional psutil)
+        if psutil is None:
+            t.append("(uv add psutil for cpu/ram/io)", style="#555555")
+            return t
+        try:
+            cpu = psutil.cpu_percent()
+            t.append("cpu ", style=L); t.append_text(self._gauge(cpu / 100)); t.append(f" {cpu:.0f}%  ", style=V)
+            vm = psutil.virtual_memory()
+            t.append("ram ", style=L); t.append_text(self._gauge(vm.percent / 100))
+            t.append(f" {self._fmt_bytes(vm.used)}/{self._fmt_bytes(vm.total)}  ", style=V)
+            d, n, now = psutil.disk_io_counters(), psutil.net_io_counters(), time.time()
+            dtot = (d.read_bytes + d.write_bytes) if d else 0
+            ntot = (n.bytes_sent + n.bytes_recv) if n else 0
+            if self._io_prev:
+                pd, pn, pt = self._io_prev
+                dt = max(0.1, now - pt)
+                t.append("disk ", style=L); t.append(f"{self._fmt_bytes((dtot - pd) / dt)}/s  ", style="#8a8a8a")
+                t.append("net ", style=L); t.append(f"{self._fmt_bytes((ntot - pn) / dt)}/s", style="#8a8a8a")
+            self._io_prev = (dtot, ntot, now)
+        except Exception:
+            pass
+        return t
+
     # ---- input routing ----
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -796,6 +881,12 @@ class AgentApp(App):
                     Text(f"recall {'ENABLED — local code/docs/memory search available' if self.runner.rag else 'DISABLED'}",
                          style="yellow")
                 )
+            elif text == "/stats":
+                panel = self.query_one("#topstats")
+                panel.display = not panel.display
+                self.stats_on = panel.display
+                self.body_write(Text(f"stats panel {'on' if panel.display else 'off'}", style="yellow"))
+                return
             elif text == "/ctx" or text.startswith("/ctx "):
                 from agent.core.compaction import ctx_command
                 self.body_write(Text(ctx_command(self.runner, text[len("/ctx"):]), style="yellow"))
@@ -957,6 +1048,9 @@ class AgentApp(App):
                             + (f" ({running} running)" if running else ""))
             try:
                 self.call_from_thread(self.update_status, line)
+                if self.stats_on:
+                    self.call_from_thread(
+                        lambda txt=self._stats_line(s): self.query_one("#topstats", Static).update(txt))
             except Exception:
                 return
             time.sleep(1.0)

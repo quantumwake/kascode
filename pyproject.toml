@@ -19,7 +19,8 @@ dependencies = [
 [project.optional-dependencies]
 web = ["ddgs>=8.0", "trafilatura>=2.0.0"]   # web_search / web_fetch  (--net)
 art = ["mflux>=0.9"]                          # generate_image (FLUX on MLX) (--art)
-all = ["kas[web,art]"]
+stats = ["psutil>=5.9"]                       # cpu/ram/disk/net in the /stats panel
+all = ["kas[web,art,stats]"]
 
 [project.scripts]
 kas = "agent.cli:main"

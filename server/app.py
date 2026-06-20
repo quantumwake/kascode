@@ -128,7 +128,8 @@ def live_stats() -> dict[str, Any]:
     (e.g. during a long tool call, whose body is buffered until it closes)."""
     if engine is None:
         return {"model": MODEL_ID, "active": False}
-    return {"model": MODEL_ID, **engine.stats, **engine.ping_status()}
+    sysstats = getattr(engine, "system_stats", lambda: {})()
+    return {"model": MODEL_ID, **engine.stats, **engine.ping_status(), **sysstats}
 
 
 def _validate(req: MessagesRequest) -> JSONResponse | None:
