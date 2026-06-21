@@ -192,6 +192,15 @@ def main() -> None:
     if store is None:
         store = SessionStore(workdir)
 
+    def print_resume_hint() -> None:
+        """On exit, show how to pick this session back up."""
+        if not messages:
+            return  # nothing was said this session — nothing to resume
+        cmd = f"kas --resume {store.id}"
+        if workdir != pathlib.Path.cwd():
+            cmd += f" --workdir {workdir}"
+        print(f"\nresume this session with:\n  {cmd}")
+
     from scripts.banner import print_console
 
     if args.task:  # one-shot
@@ -228,6 +237,7 @@ def main() -> None:
             art=args.art,
             theme=args.theme,
         ).run()
+        print_resume_hint()
         return
 
     # plain REPL fallback
@@ -241,8 +251,10 @@ def main() -> None:
             user = input("\nyou> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
+            print_resume_hint()
             return
         if not user or user in ("exit", "quit"):
+            print_resume_hint()
             return
         if user.startswith("/"):
             if user == "/yolo":
