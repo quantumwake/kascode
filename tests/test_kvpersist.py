@@ -5,9 +5,9 @@ so it's not exercised here.
 Run:  uv run python tests/test_kvpersist.py
 """
 
+import pathlib
 import sys
 import tempfile
-import pathlib
 
 sys.path.insert(0, ".")
 
@@ -27,8 +27,12 @@ with tempfile.TemporaryDirectory() as tmp:
     for seq in (0, 1, 2, 10):
         kv.delta_path(d, seq).write_text("x")
     files = kv.delta_files(d)
-    assert [p.name for p in files] == ["0000.safetensors", "0001.safetensors",
-                                       "0002.safetensors", "0010.safetensors"], files
+    assert [p.name for p in files] == [
+        "0000.safetensors",
+        "0001.safetensors",
+        "0002.safetensors",
+        "0010.safetensors",
+    ], files
     assert kv.next_seq(d) == 11, kv.next_seq(d)
     assert kv.delta_path(d, 11).name == "0011.safetensors"
     print("paths + sequencing: OK")

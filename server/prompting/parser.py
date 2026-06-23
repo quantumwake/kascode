@@ -28,7 +28,9 @@ class StreamParser:
     generation ends. Completed tool calls also accumulate in .tool_calls.
     """
 
-    def __init__(self, dialect=None, schemas: Schemas | None = None, thinking: bool = False) -> None:
+    def __init__(
+        self, dialect=None, schemas: Schemas | None = None, thinking: bool = False
+    ) -> None:
         self.dialect = dialect or GemmaDialect()
         self.schemas = schemas
         self.buffer = ""

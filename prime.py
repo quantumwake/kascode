@@ -47,7 +47,7 @@ def main():
         while True:
             try:
                 user_input = input("Enter a number (or 'q' to quit): ").strip()
-                if user_input.lower() == 'q':
+                if user_input.lower() == "q":
                     print("Goodbye!")
                     break
                 n = int(user_input)

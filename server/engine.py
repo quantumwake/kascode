@@ -13,8 +13,9 @@ import os
 import queue
 import threading
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from .core.cache import longest_common_prefix
 
@@ -59,7 +60,7 @@ class Engine:
     def __init__(self, model_id: str) -> None:
         self.model_id = model_id
         self._jobs: queue.Queue[tuple[queue.Queue, threading.Event, Callable]] = queue.Queue()
-        self._active_cancel: "threading.Event | None" = None  # in-flight job's cancel flag
+        self._active_cancel: threading.Event | None = None  # in-flight job's cancel flag
         self._ready = threading.Event()
         self._load_error: BaseException | None = None
         # Live generation stats, readable from any thread (GET /v1/stats).
@@ -151,8 +152,11 @@ class Engine:
         """Native context window (max_position_embeddings). Checked across the
         model and its sub-modules — MoE/multimodal models nest their args
         (e.g. A3B exposes it on model.language_model.args)."""
-        candidates = [self.model, getattr(self.model, "language_model", None),
-                      getattr(self.model, "model", None)]
+        candidates = [
+            self.model,
+            getattr(self.model, "language_model", None),
+            getattr(self.model, "model", None),
+        ]
         for obj in candidates:
             if obj is None:
                 continue
@@ -178,8 +182,13 @@ class Engine:
             #   Continuation threads stay True and get KV quantized for free.
             # quantized: do the cache's full-attention layers hold quantized KV?
             #   (a quantized cache can't be trimmed — see reuse_cache).
-            slot = {"cache": None, "tokens": [], "append_only": True, "quantized": False,
-                    "saved_offset": 0}  # positions already persisted to disk (KV-resume)
+            slot = {
+                "cache": None,
+                "tokens": [],
+                "append_only": True,
+                "quantized": False,
+                "saved_offset": 0,
+            }  # positions already persisted to disk (KV-resume)
             self._slots[key] = slot
         else:
             self._slot_order.remove(key)
@@ -326,7 +335,8 @@ class Engine:
                         if slot["quantized"]:
                             log.info(
                                 "cache reset: %d-token trim needed but cache is "
-                                "quantized (untrimmable) — full re-prefill", excess,
+                                "quantized (untrimmable) — full re-prefill",
+                                excess,
                             )
                         slot["cache"] = None
             if slot["cache"] is None:
@@ -489,7 +499,8 @@ class Engine:
                     arrays[f"{i}.v"] = v[:, :, start:end, :]
                 seq = kvpersist.next_seq(d)
                 self._mx.save_safetensors(
-                    str(kvpersist.delta_path(d, seq)), arrays,
+                    str(kvpersist.delta_path(d, seq)),
+                    arrays,
                     metadata={"start": str(start), "end": str(end)},
                 )
                 slot["saved_offset"] = end
@@ -528,8 +539,10 @@ class Engine:
                         ks[i].append(arr[f"{i}.k"])
                         vs[i].append(arr[f"{i}.v"])
                 for i, c in enumerate(cache):
-                    c.state = (self._mx.concatenate(ks[i], axis=2),
-                               self._mx.concatenate(vs[i], axis=2))
+                    c.state = (
+                        self._mx.concatenate(ks[i], axis=2),
+                        self._mx.concatenate(vs[i], axis=2),
+                    )
                 slot["cache"] = cache
                 slot["tokens"] = list(tokens)
                 slot["saved_offset"] = int(cache[0].offset)

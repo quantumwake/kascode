@@ -20,7 +20,7 @@ import re
 from typing import Any
 
 from .gemma_args import parse_tool_call_body
-from .wire import CH_CLOSE, CH_OPEN, QUOTE, TC_CLOSE, TC_OPEN, Schemas, new_tool_use_id
+from .wire import CH_CLOSE, CH_OPEN, TC_CLOSE, TC_OPEN, Schemas, new_tool_use_id
 
 
 class GemmaDialect:
@@ -59,7 +59,9 @@ class GemmaDialect:
                 parts.append("<|channel>thought\n<channel|>")
         return "".join(parts) or None
 
-    def assistant_entry(self, texts: list[str], reasoning: list[str], tool_calls: list[dict]) -> dict:
+    def assistant_entry(
+        self, texts: list[str], reasoning: list[str], tool_calls: list[dict]
+    ) -> dict:
         entry: dict[str, Any] = {"role": "assistant", "content": "\n\n".join(texts)}
         if reasoning:
             entry["reasoning"] = "\n\n".join(reasoning)
@@ -109,7 +111,9 @@ class QwenDialect:
         # on, so the model starts mid-thought without emitting an opener
         return "think" if thinking_enabled else "text"
 
-    def assistant_entry(self, texts: list[str], reasoning: list[str], tool_calls: list[dict]) -> dict:
+    def assistant_entry(
+        self, texts: list[str], reasoning: list[str], tool_calls: list[dict]
+    ) -> dict:
         content = "\n\n".join(texts)
         if reasoning:
             content = "<think>\n" + "\n\n".join(reasoning) + "\n</think>\n\n" + content

@@ -31,7 +31,9 @@ def web_fetch(url: str) -> tuple[str, bool]:
         return "web fetch unavailable — install the 'web' extra (uv add trafilatura)", True
     try:
         resp = httpx.get(
-            url, follow_redirects=True, timeout=20,
+            url,
+            follow_redirects=True,
+            timeout=20,
             headers={"User-Agent": "Mozilla/5.0 (kas agent)"},
         )
         resp.raise_for_status()

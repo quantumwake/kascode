@@ -19,22 +19,35 @@ def main(path: str = "server.log", last: int = 20) -> None:
             quantized += 1
         m = LINE.search(line)
         if m:
-            rows.append({k: float(v) if "." in v else (v if k == "time" else int(v)) for k, v in m.groupdict().items()})
+            rows.append(
+                {
+                    k: float(v) if "." in v else (v if k == "time" else int(v))
+                    for k, v in m.groupdict().items()
+                }
+            )
     if not rows:
         print("no request lines found in", path)
         return
 
     recent = rows[-last:]
-    print(f"{'time':8} {'in':>7} {'cache%':>7} {'prefill':>8} {'pf tok/s':>9} {'out':>6} {'gen tok/s':>10}")
+    print(
+        f"{'time':8} {'in':>7} {'cache%':>7} {'prefill':>8} "
+        f"{'pf tok/s':>9} {'out':>6} {'gen tok/s':>10}"
+    )
     for r in recent:
         pct = 100 * r["hit"] / r["inp"] if r["inp"] else 0
-        print(f"{r['time']:8} {r['inp']:>7} {pct:>6.0f}% {r['pre']:>8} {r['ptps']:>9} {r['out']:>6} {r['gtps']:>10.1f}")
+        print(
+            f"{r['time']:8} {r['inp']:>7} {pct:>6.0f}% {r['pre']:>8} "
+            f"{r['ptps']:>9} {r['out']:>6} {r['gtps']:>10.1f}"
+        )
 
     n = len(rows)
     hits = sum(r["hit"] for r in rows)
     inp = sum(r["inp"] for r in rows)
-    print(f"\n{n} requests · lifetime cache hit {100 * hits / inp:.0f}% · "
-          f"{continuations} continuation turns · {quantized} KV-quantization events")
+    print(
+        f"\n{n} requests · lifetime cache hit {100 * hits / inp:.0f}% · "
+        f"{continuations} continuation turns · {quantized} KV-quantization events"
+    )
 
     # generation speed by context size bucket — the long-context decode story
     buckets = [(0, 4000), (4000, 12000), (12000, 24000), (24000, 10**9)]

@@ -33,8 +33,7 @@ def build_command(prompt: str, out_path, *, seed=None, steps=None) -> list[str]:
     cmd = [config.ART_BIN]
     if config.ART_MODEL:
         cmd += ["--model", config.ART_MODEL]
-    cmd += ["--prompt", full, "--output", str(out_path),
-            "--steps", str(steps or config.ART_STEPS)]
+    cmd += ["--prompt", full, "--output", str(out_path), "--steps", str(steps or config.ART_STEPS)]
     if config.ART_QUANTIZE:
         cmd += ["-q", str(config.ART_QUANTIZE)]
     if seed is not None:
@@ -54,12 +53,15 @@ def _missing_hint() -> str:
 
 def resolve_out(workdir, prompt: str, path: str | None) -> pathlib.Path:
     """Resolve the output PNG path (default assets/generated/<slug>.png under workdir)."""
-    out = pathlib.Path(path) if path else pathlib.Path(config.ART_OUTPUT_DIR) / f"{_slug(prompt)}.png"
+    out = (
+        pathlib.Path(path) if path else pathlib.Path(config.ART_OUTPUT_DIR) / f"{_slug(prompt)}.png"
+    )
     return out if out.is_absolute() else pathlib.Path(workdir) / out
 
 
-def render(prompt: str, out: pathlib.Path, *, seed: int | None = None,
-           steps: int | None = None) -> tuple[str, bool]:
+def render(
+    prompt: str, out: pathlib.Path, *, seed: int | None = None, steps: int | None = None
+) -> tuple[str, bool]:
     """BLOCKING render of one image to `out` via the mflux CLI. (Run off-thread
     for async; see ToolRunner.tool_generate_image.)"""
     if not prompt or not prompt.strip():
@@ -78,15 +80,15 @@ def render(prompt: str, out: pathlib.Path, *, seed: int | None = None,
     if proc.returncode != 0 or not out.exists():
         tail = (proc.stderr or proc.stdout or "").strip()[-800:]
         return (
-            f"image generation failed (exit {proc.returncode}).\n"
-            f"command: {' '.join(cmd)}\n{tail}",
+            f"image generation failed (exit {proc.returncode}).\ncommand: {' '.join(cmd)}\n{tail}",
             True,
         )
     note = f" (seed {seed})" if seed is not None else ""
     return f"wrote image to {out}{note}", False
 
 
-def generate_image(prompt: str, workdir, path: str | None = None,
-                   seed: int | None = None, steps: int | None = None) -> tuple[str, bool]:
+def generate_image(
+    prompt: str, workdir, path: str | None = None, seed: int | None = None, steps: int | None = None
+) -> tuple[str, bool]:
     """Blocking convenience wrapper (resolve path + render)."""
     return render(prompt, resolve_out(workdir, prompt, path), seed=seed, steps=steps)

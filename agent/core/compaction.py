@@ -13,7 +13,6 @@ from .. import config
 from .prompts import COMPACT_PROMPT, SUBAGENT_HINT, SYSTEM
 from .toolspec import SUBAGENT_TOOL, TOOLS
 
-
 # Fraction of the model's native window past which we MUST compact, even in the
 # middle of a tool-calling sequence — sailing past the trained positions yields
 # garbage. This is the hard ceiling; everything else is deferrable.
@@ -51,15 +50,32 @@ def should_compact(runner, input_tokens: int, compact_at: int):
 
 
 def run_compaction(
-    client, messages, io, model, runner, input_tokens, reason,
-    *, store=None, thread="main", max_tokens=16384, tools=None,
+    client,
+    messages,
+    io,
+    model,
+    runner,
+    input_tokens,
+    reason,
+    *,
+    store=None,
+    thread="main",
+    max_tokens=16384,
+    tools=None,
 ) -> None:
     """Compact `messages` in place and reset the post-compaction bookkeeping
     (floor / cooldown / decode-rate window)."""
     io.notice(f"[compaction trigger: {reason}]")
     compact_messages(
-        client, messages, io, model, input_tokens,
-        store=store, thread=thread, max_tokens=max_tokens, tools=tools,
+        client,
+        messages,
+        io,
+        model,
+        input_tokens,
+        store=store,
+        thread=thread,
+        max_tokens=max_tokens,
+        tools=tools,
     )
     summary_chars = len(messages[0]["content"]) if messages else 0
     runner.compact_floor = summary_chars // 4 + 1000  # ~tokens + system/tools
@@ -78,8 +94,8 @@ def ctx_command(runner, arg: str) -> str:
     native = runner.context_limit
     a = (arg or "").strip().lower()
     if a in ("max", "full"):
-        runner.compact_at = 0          # disable the soft size cap
-        runner.tps_valve = False       # disable the decode-speed valve -> ride to the hard limit
+        runner.compact_at = 0  # disable the soft size cap
+        runner.tps_valve = False  # disable the decode-speed valve -> ride to the hard limit
     elif a in ("auto", "default", "reset"):
         runner.compact_at = config.COMPACT_AT
         runner.tps_valve = True
@@ -136,7 +152,10 @@ def compact_messages(
     if req_messages and req_messages[-1].get("role") == "user":
         content = req_messages[-1]["content"]
         blocks = list(content) if isinstance(content, list) else [{"type": "text", "text": content}]
-        req_messages[-1] = {"role": "user", "content": blocks + [{"type": "text", "text": COMPACT_PROMPT}]}
+        req_messages[-1] = {
+            "role": "user",
+            "content": blocks + [{"type": "text", "text": COMPACT_PROMPT}],
+        }
     else:
         req_messages = req_messages + [{"role": "user", "content": COMPACT_PROMPT}]
 

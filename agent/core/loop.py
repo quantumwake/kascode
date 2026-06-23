@@ -50,7 +50,9 @@ def run_subagent(
     # The parent picks the round budget by task complexity; clamp to the ceiling.
     requested = (args or {}).get("max_rounds")
     try:
-        budget = max(1, min(int(requested), SUBAGENT_ROUNDS_CAP)) if requested else SUBAGENT_MAX_ROUNDS
+        budget = (
+            max(1, min(int(requested), SUBAGENT_ROUNDS_CAP)) if requested else SUBAGENT_MAX_ROUNDS
+        )
     except (TypeError, ValueError):
         budget = SUBAGENT_MAX_ROUNDS
     label = task[:100].splitlines()[0]
@@ -135,7 +137,11 @@ def agent_turn(
     # Tell the server which session dir to persist/rehydrate this thread's KV
     # cache under (server only acts on it when KV persistence is enabled).
     headers = {"x-agent-thread": thread}
-    if store is not None and getattr(store, "dir", None) is not None and getattr(runner, "persist_kv", True):
+    if (
+        store is not None
+        and getattr(store, "dir", None) is not None
+        and getattr(runner, "persist_kv", True)
+    ):
         headers["x-agent-session-dir"] = str(store.dir)
     truncations = 0
     rounds = 0
@@ -210,9 +216,7 @@ def agent_turn(
             io.stream_finished(response.usage if response else None)
 
         if aborted:
-            kept = [
-                b for b in partial if (b.get("text") or b.get("thinking", "")).strip()
-            ]
+            kept = [b for b in partial if (b.get("text") or b.get("thinking", "")).strip()]
             if kept:
                 messages.append({"role": "assistant", "content": kept})
             # Pause: stop cleanly, keep partial, let the caller save + exit.
@@ -222,8 +226,7 @@ def agent_turn(
                 return
             io.notice("[response interrupted — partial output kept]")
             steers = [
-                {"type": "text", "text": f"[user steering message] {s}"}
-                for s in io.drain_steers()
+                {"type": "text", "text": f"[user steering message] {s}"} for s in io.drain_steers()
             ]
             if steers:
                 io.notice(f"[injecting {len(steers)} steering message(s)]")
@@ -297,9 +300,17 @@ def agent_turn(
             # the next user turn starts small and fast.
             if compact_pending or level != "none":
                 run_compaction(
-                    client, messages, io, model, runner, response.usage.input_tokens,
+                    client,
+                    messages,
+                    io,
+                    model,
+                    runner,
+                    response.usage.input_tokens,
                     reason or "deferred to end of turn",
-                    store=store, thread=thread, max_tokens=max_tokens, tools=tools,
+                    store=store,
+                    thread=thread,
+                    max_tokens=max_tokens,
+                    tools=tools,
                 )
             return
 
@@ -309,7 +320,10 @@ def agent_turn(
         # yields a usable summary instead of getting cut off mid-tool-call.
         if max_rounds is not None and rounds >= max_rounds - 1:
             content_back = content_back + [
-                {"type": "text", "text": ROUND_WRAPUP_NOTE.format(rounds=rounds, max_rounds=max_rounds)}
+                {
+                    "type": "text",
+                    "text": ROUND_WRAPUP_NOTE.format(rounds=rounds, max_rounds=max_rounds),
+                }
             ]
         messages.append({"role": "user", "content": content_back})
 
@@ -319,8 +333,17 @@ def agent_turn(
         # triggers (decode-speed, size) DEFER to the next turn boundary above.
         if level == "hard":
             run_compaction(
-                client, messages, io, model, runner, response.usage.input_tokens, reason,
-                store=store, thread=thread, max_tokens=max_tokens, tools=tools,
+                client,
+                messages,
+                io,
+                model,
+                runner,
+                response.usage.input_tokens,
+                reason,
+                store=store,
+                thread=thread,
+                max_tokens=max_tokens,
+                tools=tools,
             )
             compact_pending = False
         elif level == "soft":

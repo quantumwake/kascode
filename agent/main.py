@@ -14,6 +14,11 @@ notably the TUI (`from agent import main as core`) and `agent.main:main`.
 New code should import from the specific modules above.
 """
 
+from .adapters.storage.filesystem import SessionStore
+from .adapters.tools.bash import BashSession
+from .adapters.tools.executor import ToolRunner
+from .adapters.tools.files import PathResolver, SandboxViolation
+from .adapters.ui.console import ConsoleIO, Heartbeat
 from .cli import main, serve_main
 from .config import (
     BASE_URL,
@@ -23,20 +28,14 @@ from .config import (
     MAX_TOKENS,
     MAX_TOOL_OUTPUT,
     MODEL,
-    _truncate,
     served_info,
     served_model,
 )
-from .adapters.storage.filesystem import SessionStore
-from .adapters.tools.bash import BashSession, clean_terminal
-from .adapters.tools.executor import ToolRunner
-from .adapters.tools.files import PathResolver, SandboxViolation
-from .adapters.ui.console import ConsoleIO, Heartbeat
 from .core.compaction import compact_messages, should_compact
 from .core.loop import agent_turn, run_subagent
 from .core.prompts import COMPACT_PROMPT, SUBAGENT_HINT, SYSTEM, TRUNCATION_NOTE
-from .core.subagent import SubagentIO
 from .core.self_skill import self_skill
+from .core.subagent import SubagentIO
 from .core.toolspec import RAG_TOOLS, SUBAGENT_MAX_ROUNDS, SUBAGENT_TOOL, TOOLS, WEB_TOOLS
 from .core.transcript import jsonable, turn_label
 

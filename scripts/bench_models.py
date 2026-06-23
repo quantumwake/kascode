@@ -40,14 +40,28 @@ def decode_tps(model: str, ctx_copies: int) -> tuple[int, float]:
     return r.usage.input_tokens, out / decode_t
 
 
-TOOLS = [{"name": "get_weather", "description": "Get weather for a city. Call when asked.",
-          "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}]
+TOOLS = [
+    {
+        "name": "get_weather",
+        "description": "Get weather for a city. Call when asked.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    }
+]
 
 
 def tool_roundtrip(model: str) -> tuple[bool, float]:
     t0 = time.time()
-    r = client.messages.create(model=model, max_tokens=300, tools=TOOLS, thinking={"type": "adaptive"},
-                               messages=[{"role": "user", "content": "What's the weather in Tokyo?"}])
+    r = client.messages.create(
+        model=model,
+        max_tokens=300,
+        tools=TOOLS,
+        thinking={"type": "adaptive"},
+        messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
+    )
     ok = any(b.type == "tool_use" and b.name == "get_weather" for b in r.content)
     return ok, time.time() - t0
 
@@ -55,13 +69,15 @@ def tool_roundtrip(model: str) -> tuple[bool, float]:
 def main() -> None:
     models = sys.argv[1:]
     if not models:
-        print("usage: bench_models.py MODEL_A MODEL_B ..."); sys.exit(1)
+        print("usage: bench_models.py MODEL_A MODEL_B ...")
+        sys.exit(1)
     results = {}
     for m in models:
         print(f"\n=== {m} ===")
         r = swap(m)
         if not r.get("ok"):
-            print("  swap failed:", r); continue
+            print("  swap failed:", r)
+            continue
         print(f"  loaded (dialect: {r.get('dialect')})")
         rows = []
         for copies in (0, 8, 32):

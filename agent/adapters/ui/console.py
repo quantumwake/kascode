@@ -36,7 +36,10 @@ class Heartbeat:
         if not s.get("active"):
             return "waiting..."
         if s.get("phase") == "prefill":
-            return f"⏳ prefill {s['processed']}/{s['total']} tok (cache hit {s['cached']}) · {s['elapsed']:.0f}s"
+            return (
+                f"⏳ prefill {s['processed']}/{s['total']} tok "
+                f"(cache hit {s['cached']}) · {s['elapsed']:.0f}s"
+            )
         return f"⏳ generating {s['generated']} tok @ {s['tps']} tok/s · {s['elapsed']:.0f}s"
 
     def _loop(self) -> None:
@@ -69,7 +72,7 @@ class ConsoleIO:
 
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url
-        self.hb: "Heartbeat | None" = None
+        self.hb: Heartbeat | None = None
         self._t0 = 0.0
         self._ttft: float | None = None
         self.last_decode_tps: float = 0.0  # decode rate of the most recent turn

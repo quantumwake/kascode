@@ -97,7 +97,10 @@ RAG_TOOLS: list[dict] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "What to look for (natural language ok)"},
+                "query": {
+                    "type": "string",
+                    "description": "What to look for (natural language ok)",
+                },
                 "k": {"type": "integer", "description": "How many results (default 8)"},
             },
             "required": ["query"],
@@ -123,10 +126,24 @@ IMAGE_TOOLS: list[dict] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "prompt": {"type": "string", "description": "Detailed description: subject, style, view/angle, background"},
-                "path": {"type": "string", "description": "Output PNG path (relative to workdir; default assets/generated/<slug>.png)"},
-                "seed": {"type": "integer", "description": "Fix for reproducible / consistent results"},
-                "steps": {"type": "integer", "description": "Inference steps (default suits distilled FLUX)"},
+                "prompt": {
+                    "type": "string",
+                    "description": "Detailed description: subject, style, view/angle, background",
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Output PNG path (relative to workdir; default assets/generated/<slug>.png)"
+                    ),
+                },
+                "seed": {
+                    "type": "integer",
+                    "description": "Fix for reproducible / consistent results",
+                },
+                "steps": {
+                    "type": "integer",
+                    "description": "Inference steps (default suits distilled FLUX)",
+                },
             },
             "required": ["prompt"],
         },
@@ -141,7 +158,10 @@ IMAGE_TOOLS: list[dict] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "task_id": {"type": "integer", "description": "A specific task id (omit to list all)"},
+                "task_id": {
+                    "type": "integer",
+                    "description": "A specific task id (omit to list all)",
+                },
             },
         },
     },
@@ -175,7 +195,12 @@ TOOLS: list[dict] = [
         ),
         "input_schema": {
             "type": "object",
-            "properties": {"text": {"type": "string", "description": "Input to send (without trailing newline)"}},
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "Input to send (without trailing newline)",
+                }
+            },
             "required": ["text"],
         },
     },
@@ -226,7 +251,10 @@ TOOLS: list[dict] = [
             "properties": {
                 "path": {"type": "string"},
                 "content": {"type": "string"},
-                "append": {"type": "boolean", "description": "Append instead of overwrite (default false)"},
+                "append": {
+                    "type": "boolean",
+                    "description": "Append instead of overwrite (default false)",
+                },
             },
             "required": ["path", "content"],
         },

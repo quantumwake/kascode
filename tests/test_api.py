@@ -39,7 +39,9 @@ class FakeEngine:
         text = CANNED
         for i in range(0, len(text), 7):
             yield GenChunk(text=text[i : i + 7])
-        yield GenChunk(text="", done=True, prompt_tokens=42, generation_tokens=33, finish_reason="stop")
+        yield GenChunk(
+            text="", done=True, prompt_tokens=42, generation_tokens=33, finish_reason="stop"
+        )
 
     def request_cancel(self):
         return False  # no job active in this synchronous fake

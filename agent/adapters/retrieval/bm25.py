@@ -13,15 +13,46 @@ import json
 import pathlib
 import re
 import sqlite3
-import time
 
-CODE_EXT = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".c", ".h",
-            ".cc", ".cpp", ".hpp", ".rb", ".php", ".swift", ".kt", ".scala", ".sh", ".lua"}
+CODE_EXT = {
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".c",
+    ".h",
+    ".cc",
+    ".cpp",
+    ".hpp",
+    ".rb",
+    ".php",
+    ".swift",
+    ".kt",
+    ".scala",
+    ".sh",
+    ".lua",
+}
 TEXT_EXT = {".md", ".txt", ".rst", ".toml", ".yaml", ".yml", ".cfg", ".ini", ".jinja"}
-SKIP_DIRS = {".git", ".agent", ".venv", "venv", "node_modules", "__pycache__",
-             "dist", "build", ".next", "target", ".mypy_cache", ".pytest_cache"}
+SKIP_DIRS = {
+    ".git",
+    ".agent",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    "dist",
+    "build",
+    ".next",
+    "target",
+    ".mypy_cache",
+    ".pytest_cache",
+}
 MAX_FILE = 1_000_000  # skip files larger than ~1 MB
-CHUNK_LINES = 60      # hard cap on chunk size (lines)
+CHUNK_LINES = 60  # hard cap on chunk size (lines)
 # Structural boundary: a definition starting at low indent (keeps functions /
 # classes whole instead of slicing mid-body). Language-agnostic-ish.
 DEF_RE = re.compile(
@@ -39,7 +70,7 @@ def _chunk_code(text: str) -> list[tuple[int, int, str]]:
             bounds.append(i)
     bounds.append(len(lines))
     out = []
-    for a, b in zip(bounds, bounds[1:]):
+    for a, b in zip(bounds, bounds[1:], strict=False):
         for s in range(a, b, CHUNK_LINES):
             e = min(b, s + CHUNK_LINES)
             body = "\n".join(lines[s:e]).strip()
@@ -61,10 +92,49 @@ def _chunk_text(text: str) -> list[tuple[int, int, str]]:
 
 # Common words that dilute BM25 ranking on "how does X work"-style queries.
 _STOP = {
-    "how", "does", "do", "did", "when", "where", "what", "why", "which", "who",
-    "the", "a", "an", "is", "are", "was", "were", "be", "to", "of", "in", "on",
-    "for", "with", "and", "or", "this", "that", "it", "as", "at", "by", "from",
-    "we", "i", "you", "should", "would", "can", "use", "used", "using", "into",
+    "how",
+    "does",
+    "do",
+    "did",
+    "when",
+    "where",
+    "what",
+    "why",
+    "which",
+    "who",
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "to",
+    "of",
+    "in",
+    "on",
+    "for",
+    "with",
+    "and",
+    "or",
+    "this",
+    "that",
+    "it",
+    "as",
+    "at",
+    "by",
+    "from",
+    "we",
+    "i",
+    "you",
+    "should",
+    "would",
+    "can",
+    "use",
+    "used",
+    "using",
+    "into",
 }
 
 
@@ -81,9 +151,7 @@ class RagIndex:
 
     def __init__(self, db_path: pathlib.Path) -> None:
         self.db = sqlite3.connect(str(db_path))
-        self.db.execute(
-            "CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY, hash TEXT)"
-        )
+        self.db.execute("CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY, hash TEXT)")
         self.db.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5("
             "body, path UNINDEXED, lines UNINDEXED, source UNINDEXED)"
@@ -98,9 +166,7 @@ class RagIndex:
             "INSERT INTO chunks(body, path, lines, source) VALUES (?, ?, ?, ?)",
             [(body, key, f"{a}-{b}", source) for a, b, body in chunks],
         )
-        self.db.execute(
-            "INSERT OR REPLACE INTO files(path, hash) VALUES (?, ?)", (key, digest)
-        )
+        self.db.execute("INSERT OR REPLACE INTO files(path, hash) VALUES (?, ?)", (key, digest))
 
     def index_workspace(self, root: pathlib.Path) -> int:
         """Index code+text files under root. Returns number of files (re)indexed."""
@@ -118,7 +184,11 @@ class RagIndex:
             except OSError:
                 continue
             digest = hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()
-            key = str(path.relative_to(root)) if root in path.parents or path.parent == root else str(path)
+            key = (
+                str(path.relative_to(root))
+                if root in path.parents or path.parent == root
+                else str(path)
+            )
             row = self.db.execute("SELECT hash FROM files WHERE path = ?", (key,)).fetchone()
             if row and row[0] == digest:
                 continue  # unchanged
@@ -149,7 +219,9 @@ class RagIndex:
                 data = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            text = data.get("summary") or _flatten_messages(data.get("messages") or data.get("original_messages") or [])
+            text = data.get("summary") or _flatten_messages(
+                data.get("messages") or data.get("original_messages") or []
+            )
             if not text.strip():
                 continue
             self._put(key, "memory", _chunk_text(text), digest)

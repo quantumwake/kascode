@@ -56,11 +56,14 @@ class ToolRunner:
         self.compact_cooldown = 0  # turns remaining before compaction may fire again
         # Compaction policy (mutable at runtime via the /ctx command):
         from ...config import COMPACT_AT
-        self.compact_at = COMPACT_AT if compact_at is None else compact_at  # soft size cap (0 = off)
-        self.tps_valve = True       # decode-speed relief valve on/off
+
+        self.compact_at = (
+            COMPACT_AT if compact_at is None else compact_at
+        )  # soft size cap (0 = off)
+        self.tps_valve = True  # decode-speed relief valve on/off
         self.hard_limit_frac = 0.85  # fraction of native window that forces compaction
-        self.last_input_tokens = 0   # most recent prompt size, for /ctx display
-        self.persist_kv = True       # send the session dir so the server persists KV (/kv)
+        self.last_input_tokens = 0  # most recent prompt size, for /ctx display
+        self.persist_kv = True  # send the session dir so the server persists KV (/kv)
         # Async image generation: tasks render off-thread so the loop never waits.
         self._art_tasks: dict[int, dict] = {}
         self._art_seq = 0
@@ -121,8 +124,10 @@ class ToolRunner:
         waits = sess.idle_waits
 
         if status == "timeout":  # busy: still producing output after 120s
-            note = ("still producing output after 120s. bash_wait to keep waiting, "
-                    "or bash_kill to stop it.")
+            note = (
+                "still producing output after 120s. bash_wait to keep waiting, "
+                "or bash_kill to stop it."
+            )
         elif waits >= 3:
             # Break the livelock: leave it running (PTY child is its own session)
             # and free the shell so the agent can do something useful.
@@ -136,12 +141,16 @@ class ToolRunner:
                 False,
             )
         elif waits >= 2:
-            note = (f"silent for {waits} waits — almost certainly a ready long-running process "
-                    "(dev server/watcher) or stuck, NOT waiting for input. Stop calling bash_wait: "
-                    "move on and use it, or bash_kill it.")
+            note = (
+                f"silent for {waits} waits — almost certainly a ready long-running process "
+                "(dev server/watcher) or stuck, NOT waiting for input. Stop calling bash_wait: "
+                "move on and use it, or bash_kill it."
+            )
         else:
-            note = ("no output for a while — it may be waiting for input. Answer with "
-                    "bash_send_input, keep waiting with bash_wait, or stop with bash_kill.")
+            note = (
+                "no output for a while — it may be waiting for input. Answer with "
+                "bash_send_input, keep waiting with bash_wait, or stop with bash_kill."
+            )
         return _truncate(out) + f"\n[process still running: {note}]", False
 
     def tool_bash(self, command: str) -> tuple[str, bool]:
@@ -248,7 +257,11 @@ class ToolRunner:
             self.persist_kv = False
         d = pathlib.Path(self.workdir) / ".agent" / "sessions"
         # best-effort count across this workdir's kvcache dirs (main thread)
-        n = sum(len(list(p.glob("*.safetensors"))) for p in d.glob("*/kvcache/main")) if d.exists() else 0
+        n = (
+            sum(len(list(p.glob("*.safetensors"))) for p in d.glob("*/kvcache/main"))
+            if d.exists()
+            else 0
+        )
         return (
             f"KV-resume {'ON' if self.persist_kv else 'OFF'} "
             f"(server must also have KAS_KV_PERSIST!=0) · {n} delta file(s) on disk"
@@ -263,7 +276,11 @@ class ToolRunner:
         return self._art_pool
 
     def tool_generate_image(
-        self, prompt: str, path: str | None = None, seed: int | None = None, steps: int | None = None
+        self,
+        prompt: str,
+        path: str | None = None,
+        seed: int | None = None,
+        steps: int | None = None,
     ) -> tuple[str, bool]:
         """ASYNC: kick off the render in the background and return immediately so
         the agent keeps working. The PNG appears at the returned path when done;

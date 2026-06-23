@@ -19,9 +19,7 @@ class SessionStore:
         self.root = pathlib.Path(workdir) / ".agent" / "sessions"
         self.id = session_id or time.strftime("%Y%m%d-%H%M%S")
         self.dir = self.root / self.id
-        self.compactions = (
-            len(list(self.dir.glob("compaction-*.json"))) if self.dir.exists() else 0
-        )
+        self.compactions = len(list(self.dir.glob("compaction-*.json"))) if self.dir.exists() else 0
 
     def save_transcript(
         self, messages: list, model: str | None = None, paused: bool = False

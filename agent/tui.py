@@ -36,9 +36,28 @@ from agent import main as core
 from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
-COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
-            "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/stats", "/fx", "/theme", "/compact",
-            "/self-skill", "/stop", "/pause", "/model", "exit"]
+COMMANDS = [
+    "/yolo",
+    "/rag",
+    "/rag enable",
+    "/rag disable",
+    "/subagents",
+    "/status",
+    "/ctx",
+    "/ctx max",
+    "/ctx auto",
+    "/kv",
+    "/art",
+    "/stats",
+    "/fx",
+    "/theme",
+    "/compact",
+    "/self-skill",
+    "/stop",
+    "/pause",
+    "/model",
+    "exit",
+]
 
 
 class ModelSelect(ModalScreen):
@@ -106,14 +125,16 @@ class SubagentView(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="sv-box"):
-            yield Static(f"subagent[{self._sub.n}] · {self._sub.status} · {self._sub.label}  (Esc to close)",
-                         id="sv-title")
+            yield Static(
+                f"subagent[{self._sub.n}] · {self._sub.status} · {self._sub.label}  (Esc to close)",
+                id="sv-title",
+            )
             log = RichLog(wrap=True, markup=False, highlight=False)
             yield log
 
     def on_mount(self) -> None:
         log = self.query_one(RichLog)
-        for line in (self._sub.buffer or ["(no captured output)"]):
+        for line in self._sub.buffer or ["(no captured output)"]:
             log.write(Text(line, style="#cc7000"))
 
     def action_dismiss(self) -> None:
@@ -137,17 +158,23 @@ class FxBar(Static):
     BRAILLE = " ⠁⠃⠇⡇⣇⣧⣷⣿"
     # palette per state, dim → bright (last entry matches the status-line colour)
     PALETTES = {
-        "idle":       ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],  # amber
-        "prefill":    ["#3a1e00", "#7a3d00", "#b85c00", "#ffa657", "#ffd0a0"],  # orange
+        "idle": ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],  # amber
+        "prefill": ["#3a1e00", "#7a3d00", "#b85c00", "#ffa657", "#ffd0a0"],  # orange
         "generating": ["#06363b", "#0a6b74", "#1aa6b3", "#39d3e8", "#9af2ff"],  # cyan
-        "tools":      ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
-        "offline":    ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
+        "tools": ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
+        "offline": ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
     }
     # Colour schemes the rotating states cycle through. Most are MULTI-HUE mixes
     # (red/orange/yellow/green/blue/white together) so the bar bursts with colour,
     # plus a few mono ramps for contrast.
     PALETTE_POOL = [
-        ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#0a84ff"],  # rgb (red→orange→yellow→green→blue)
+        [
+            "#ff3b30",
+            "#ff9500",
+            "#ffcc00",
+            "#34c759",
+            "#0a84ff",
+        ],  # rgb (red→orange→yellow→green→blue)
         ["#e63946", "#f3a712", "#06d6a0", "#118ab2", "#9b5de5"],  # spectrum
         ["#ff2d95", "#feec00", "#00f5d4", "#00bbf9", "#9b5de5"],  # neon
         ["#ff3b30", "#ff9500", "#ffffff", "#00c8ff", "#0a84ff"],  # fire→ice (with white)
@@ -169,15 +196,55 @@ class FxBar(Static):
     # wear a FIXED signature colour (see PALETTES + _tick) so it's obvious the
     # agent is busy. prefill is a real progress bar; offline is a flatline.
     POOLS = {
-        "idle":       ("twinkle", "pulse", "plasma", "starfield", "fire", "heartbeat", "bounce",
-                       "dna", "ripple", "rain", "sine", "lava", "aurora", "throb", "glimmer",
-                       "confetti", "noise", "firefly"),
-        "prefill":    ("progress",),
-        "generating": ("wave", "vu", "spectrum", "zigzag", "scanline", "ladder", "rotor",
-                       "braille", "fireworks", "symbars"),
-        "tools":      ("comet", "larson", "snake", "marquee", "binary", "glitch", "wipe",
-                       "morse", "worm", "crossing", "parallax", "wavefront", "meteor"),
-        "offline":    ("flat",),
+        "idle": (
+            "twinkle",
+            "pulse",
+            "plasma",
+            "starfield",
+            "fire",
+            "heartbeat",
+            "bounce",
+            "dna",
+            "ripple",
+            "rain",
+            "sine",
+            "lava",
+            "aurora",
+            "throb",
+            "glimmer",
+            "confetti",
+            "noise",
+            "firefly",
+        ),
+        "prefill": ("progress",),
+        "generating": (
+            "wave",
+            "vu",
+            "spectrum",
+            "zigzag",
+            "scanline",
+            "ladder",
+            "rotor",
+            "braille",
+            "fireworks",
+            "symbars",
+        ),
+        "tools": (
+            "comet",
+            "larson",
+            "snake",
+            "marquee",
+            "binary",
+            "glitch",
+            "wipe",
+            "morse",
+            "worm",
+            "crossing",
+            "parallax",
+            "wavefront",
+            "meteor",
+        ),
+        "offline": ("flat",),
     }
     # Per-mode animation speed (float step added to self._t each tick). idle drifts
     # gently; working states race so the difference reads at a glance.
@@ -185,37 +252,76 @@ class FxBar(Static):
     # Named colour themes for `/theme <name>` — pins the whole bar to one palette
     # (overrides idle's rotation + the working signature). `/theme auto` clears it.
     THEMES = {
-        "matrix":    ["#06340a", "#0a7a1a", "#1aa82a", "#39e85a", "#9affb0"],
-        "amber":     ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],
-        "ice":       ["#0a2a4a", "#155a8a", "#2a8ac8", "#4ec3f0", "#a8e8ff"],
-        "fire":      ["#c81d11", "#ff5e00", "#ffae00", "#ffe600", "#ffffff"],
-        "neon":      ["#ff2d95", "#feec00", "#00f5d4", "#00bbf9", "#9b5de5"],
+        "matrix": ["#06340a", "#0a7a1a", "#1aa82a", "#39e85a", "#9affb0"],
+        "amber": ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],
+        "ice": ["#0a2a4a", "#155a8a", "#2a8ac8", "#4ec3f0", "#a8e8ff"],
+        "fire": ["#c81d11", "#ff5e00", "#ffae00", "#ffe600", "#ffffff"],
+        "neon": ["#ff2d95", "#feec00", "#00f5d4", "#00bbf9", "#9b5de5"],
         "synthwave": ["#ff006e", "#fb5607", "#ffbe0b", "#8338ec", "#3a86ff"],
-        "rainbow":   ["#ff0040", "#ff8c00", "#ffe600", "#00d26a", "#3a86ff"],
-        "purple":    ["#1a0a3a", "#3d1d7a", "#6a2dc0", "#a05cf0", "#d4b0ff"],
-        "mono":      ["#222222", "#555555", "#888888", "#bbbbbb", "#ffffff"],
+        "rainbow": ["#ff0040", "#ff8c00", "#ffe600", "#00d26a", "#3a86ff"],
+        "purple": ["#1a0a3a", "#3d1d7a", "#6a2dc0", "#a05cf0", "#d4b0ff"],
+        "mono": ["#222222", "#555555", "#888888", "#bbbbbb", "#ffffff"],
     }
     # effects a user can pin via `/fx <name>`
-    EFFECTS = ("twinkle", "pulse", "wave", "comet", "plasma", "scanline", "fire", "starfield",
-               "braille", "progress", "heartbeat", "flat", "larson", "bounce", "vu", "dna",
-               "ripple", "rain", "marquee", "glitch", "sine", "meteor", "snake", "spectrum",
-               "wipe", "binary", "firefly", "fireworks", "zigzag", "throb", "morse", "lava",
-               "worm", "aurora", "crossing", "glimmer", "ladder", "rotor", "parallax",
-               "wavefront", "symbars", "confetti", "noise")
+    EFFECTS = (
+        "twinkle",
+        "pulse",
+        "wave",
+        "comet",
+        "plasma",
+        "scanline",
+        "fire",
+        "starfield",
+        "braille",
+        "progress",
+        "heartbeat",
+        "flat",
+        "larson",
+        "bounce",
+        "vu",
+        "dna",
+        "ripple",
+        "rain",
+        "marquee",
+        "glitch",
+        "sine",
+        "meteor",
+        "snake",
+        "spectrum",
+        "wipe",
+        "binary",
+        "firefly",
+        "fireworks",
+        "zigzag",
+        "throb",
+        "morse",
+        "lava",
+        "worm",
+        "aurora",
+        "crossing",
+        "glimmer",
+        "ladder",
+        "rotor",
+        "parallax",
+        "wavefront",
+        "symbars",
+        "confetti",
+        "noise",
+    )
 
     def __init__(self) -> None:
         super().__init__("", id="fx")
         self._t = 0
-        self._tf = 0.0            # float clock; per-mode speed advances it (see _tick)
-        self._frame = 0           # ticks since mount, for rotation timing
-        self._rotate_at = 0       # frame to switch effect on
+        self._tf = 0.0  # float clock; per-mode speed advances it (see _tick)
+        self._frame = 0  # ticks since mount, for rotation timing
+        self._rotate_at = 0  # frame to switch effect on
         self._mode: str | None = None
         self._effect = "twinkle"
         self._cur: str | None = None  # last effect actually rendered (to reset buffers on change)
         self._pin: str | None = None  # forced effect (/fx <name>); None = rotate
         self._palette: list[str] | None = None  # current colour scheme
         self._theme: list[str] | None = None  # /theme override: pins palette for all states
-        self._theme_name: str | None = None   # name of the active /theme (None = auto)
+        self._theme_name: str | None = None  # name of the active /theme (None = auto)
         self._cells: list[float] = []
         self._glyphs: list[str] = []
         self._stars: list[list[float]] = []
@@ -231,7 +337,10 @@ class FxBar(Static):
         name = (arg or "").strip().lower()
         names = ", ".join(self.THEMES)
         if name in ("", "list"):
-            return f"themes: {names} · auto — current: {self._theme_name or 'auto'} (e.g. /theme matrix)"
+            return (
+                f"themes: {names} · auto — current: "
+                f"{self._theme_name or 'auto'} (e.g. /theme matrix)"
+            )
         if name in ("auto", "off", "none"):
             self._theme = self._theme_name = None
             self._palette = None  # force a fresh pick next tick
@@ -305,7 +414,10 @@ class FxBar(Static):
         spd = 0.12 + min(40.0, float(tps)) / 40.0 * 0.4
         t = Text()
         for col in range(w):
-            y = math.sin(col * 0.25 + self._t * spd) * 0.5 + math.sin(col * 0.07 - self._t * 0.13) * 0.5
+            y = (
+                math.sin(col * 0.25 + self._t * spd) * 0.5
+                + math.sin(col * 0.07 - self._t * 0.13) * 0.5
+            )
             idx = max(0, min(len(self.BARS) - 1, int((y + 1) / 2 * (len(self.BARS) - 1))))
             t.append(self.BARS[idx], style=shades[1 + (idx * 3) // len(self.BARS)])
         return t
@@ -332,9 +444,11 @@ class FxBar(Static):
     def _plasma(self, w: int, shades: list[str]) -> Text:
         t = Text()
         for col in range(w):
-            v = (math.sin(col * 0.20 + self._t * 0.10)
-                 + math.sin(col * 0.07 - self._t * 0.07)
-                 + math.sin((col + self._t) * 0.13)) / 3
+            v = (
+                math.sin(col * 0.20 + self._t * 0.10)
+                + math.sin(col * 0.07 - self._t * 0.07)
+                + math.sin((col + self._t) * 0.13)
+            ) / 3
             b = (v + 1) / 2
             t.append(self.BARS[1 + int(b * (len(self.BARS) - 2))], style=shades[min(4, int(b * 5))])
         return t
@@ -371,8 +485,9 @@ class FxBar(Static):
     def _starfield(self, w: int, shades: list[str]) -> Text:
         if len(self._cells) != w or not self._stars:
             self._cells = [0.0] * w
-            self._stars = [[random.uniform(0, w), random.uniform(0.2, 1.0)]
-                           for _ in range(max(3, w // 12))]
+            self._stars = [
+                [random.uniform(0, w), random.uniform(0.2, 1.0)] for _ in range(max(3, w // 12))
+            ]
         glyph = [" "] * w
         sh = [0] * w
         for s in self._stars:
@@ -384,14 +499,17 @@ class FxBar(Static):
                 glyph[i] = random.choice(self.GLYPHS) if s[1] > 0.7 else "·"
                 sh[i] = min(4, int(s[1] * 5))
         t = Text()
-        for ch, s in zip(glyph, sh):
+        for ch, s in zip(glyph, sh, strict=False):
             t.append(ch, style=shades[s])
         return t
 
     def _braille(self, w: int, shades: list[str]) -> Text:
         t = Text()
         for col in range(w):
-            y = math.sin(col * 0.3 + self._t * 0.25) * 0.5 + math.sin(col * 0.1 - self._t * 0.1) * 0.5
+            y = (
+                math.sin(col * 0.3 + self._t * 0.25) * 0.5
+                + math.sin(col * 0.1 - self._t * 0.1) * 0.5
+            )
             idx = max(0, min(len(self.BRAILLE) - 1, int((y + 1) / 2 * (len(self.BRAILLE) - 1))))
             t.append(self.BRAILLE[idx], style=shades[1 + (idx * 3) // len(self.BRAILLE)])
         return t
@@ -414,8 +532,10 @@ class FxBar(Static):
         else:
             head = (self._t * 1.2) % (w + 8)
             for i in range(w):
-                t.append("█" if abs(i - head) < 3 else ("·" if i % 4 == 0 else " "),
-                         style=shades[3 if abs(i - head) < 3 else 1])
+                t.append(
+                    "█" if abs(i - head) < 3 else ("·" if i % 4 == 0 else " "),
+                    style=shades[3 if abs(i - head) < 3 else 1],
+                )
         return t
 
     def _heartbeat(self, w: int, shades: list[str]) -> Text:
@@ -453,8 +573,10 @@ class FxBar(Static):
         pos = p if p < w else period - p
         t = Text()
         for i in range(w):
-            t.append("●" if i == pos else ("·" if i % 8 == 0 else " "),
-                     style=shades[4 if i == pos else 1])
+            t.append(
+                "●" if i == pos else ("·" if i % 8 == 0 else " "),
+                style=shades[4 if i == pos else 1],
+            )
         return t
 
     def _vu(self, w: int, shades: list[str]) -> Text:
@@ -533,7 +655,9 @@ class FxBar(Static):
         t = Text()
         for col in range(w):
             y = (math.sin(col * 0.2 + self._t * 0.2) + 1) / 2
-            t.append("•" if y > 0.55 else ("·" if y > 0.2 else " "), style=shades[min(4, int(y * 5))])
+            t.append(
+                "•" if y > 0.55 else ("·" if y > 0.2 else " "), style=shades[min(4, int(y * 5))]
+            )
         return t
 
     def _meteor(self, w: int, shades: list[str]) -> Text:
@@ -555,7 +679,9 @@ class FxBar(Static):
         t = Text()
         for i in range(w):
             d = (head - i) % w
-            t.append("█" if d < seg else " ", style=shades[max(0, 4 - d // 2)] if d < seg else shades[0])
+            t.append(
+                "█" if d < seg else " ", style=shades[max(0, 4 - d // 2)] if d < seg else shades[0]
+            )
         return t
 
     # --- second wave of effects -------------------------------------------
@@ -574,8 +700,10 @@ class FxBar(Static):
         edge = p if p < w else period - p
         t = Text()
         for i in range(w):
-            t.append("█" if i < edge else ("▌" if i == edge else " "),
-                     style=shades[4 if i == edge else (3 if i < edge else 0)])
+            t.append(
+                "█" if i < edge else ("▌" if i == edge else " "),
+                style=shades[4 if i == edge else (3 if i < edge else 0)],
+            )
         return t
 
     def _binary(self, w: int, shades: list[str]) -> Text:
@@ -590,7 +718,9 @@ class FxBar(Static):
 
     def _firefly(self, w: int, shades: list[str]) -> Text:
         if len(self._stars) < 2:
-            self._stars = [[random.uniform(0, w - 1), random.uniform(-1, 1)] for _ in range(max(2, w // 22))]
+            self._stars = [
+                [random.uniform(0, w - 1), random.uniform(-1, 1)] for _ in range(max(2, w // 22))
+            ]
         cells, sh = [" "] * w, [0] * w
         for s in self._stars:
             s[0] += s[1] * 0.7
@@ -602,7 +732,7 @@ class FxBar(Static):
             j = int(s[0])
             cells[j], sh[j] = random.choice("✦✺*•"), 4
         t = Text()
-        for ch, k in zip(cells, sh):
+        for ch, k in zip(cells, sh, strict=False):
             t.append(ch, style=shades[k])
         return t
 
@@ -661,15 +791,20 @@ class FxBar(Static):
         for i in range(w):
             d = head - i
             inside = 0 <= d < seg
-            t.append(("●" if d == 0 else "•") if inside else " ",
-                     style=shades[max(0, 4 - d)] if inside else shades[0])
+            t.append(
+                ("●" if d == 0 else "•") if inside else " ",
+                style=shades[max(0, 4 - d)] if inside else shades[0],
+            )
         return t
 
     def _aurora(self, w: int, shades: list[str]) -> Text:
         t = Text()
         for col in range(w):
-            v = (math.sin(col * 0.08 + self._t * 0.06) + math.sin(col * 0.15 + self._t * 0.03)
-                 + math.sin(col * 0.03 - self._t * 0.04)) / 3
+            v = (
+                math.sin(col * 0.08 + self._t * 0.06)
+                + math.sin(col * 0.15 + self._t * 0.03)
+                + math.sin(col * 0.03 - self._t * 0.04)
+            ) / 3
             b = (v + 1) / 2
             t.append(self.BARS[1 + int(b * (len(self.BARS) - 2))], style=shades[min(4, int(b * 5))])
         return t
@@ -716,7 +851,7 @@ class FxBar(Static):
                 pos = (k + self._t * speed) % w
                 out[pos], sh[pos] = ch, s
         t = Text()
-        for ch, s in zip(out, sh):
+        for ch, s in zip(out, sh, strict=False):
             t.append(ch, style=shades[s])
         return t
 
@@ -796,8 +931,8 @@ class TuiIO:
 
     def __init__(self, app: "AgentApp") -> None:
         self.app = app
-        self.steer_q: "queue.Queue[str]" = queue.Queue()
-        self.confirm_q: "queue.Queue[str]" = queue.Queue()
+        self.steer_q: queue.Queue[str] = queue.Queue()
+        self.confirm_q: queue.Queue[str] = queue.Queue()
         self.abort = threading.Event()
         self.pause = threading.Event()
         self.last_decode_tps: float = 0.0
@@ -900,7 +1035,10 @@ class AgentApp(App):
     # on_mount), so `/theme` reskins the WHOLE screen, not just the fx bar.
     CSS = """
     Screen { background: $background; color: $foreground; }
-    #topstats { dock: top; height: 1; background: $surface; color: $foreground; padding: 0 1; display: none; }
+    #topstats {
+        dock: top; height: 1; background: $surface;
+        color: $foreground; padding: 0 1; display: none;
+    }
     #body { height: 1fr; padding: 0 1; background: $background; color: $foreground; }
     #status { height: 1; background: $surface; color: $accent; padding: 0 1; }
     #fx { height: 1; background: $background; color: $foreground; padding: 0 1; }
@@ -912,15 +1050,15 @@ class AgentApp(App):
     # FxBar.THEMES so `/theme <name>` recolours chrome AND the fx bar together.
     # "amber" is the default (the original retro amber-CRT look).
     SCREEN_THEMES = {
-        "amber":     {"bg": "#0a0500", "surface": "#1a0e00", "fg": "#ffb000", "accent": "#ff8c00"},
-        "matrix":    {"bg": "#001400", "surface": "#002a00", "fg": "#39e85a", "accent": "#1aa82a"},
-        "ice":       {"bg": "#04141f", "surface": "#0a2a4a", "fg": "#a8e8ff", "accent": "#4ec3f0"},
-        "fire":      {"bg": "#140600", "surface": "#2a0e00", "fg": "#ffae00", "accent": "#ff5e00"},
-        "neon":      {"bg": "#0a0014", "surface": "#160a28", "fg": "#00f5d4", "accent": "#ff2d95"},
+        "amber": {"bg": "#0a0500", "surface": "#1a0e00", "fg": "#ffb000", "accent": "#ff8c00"},
+        "matrix": {"bg": "#001400", "surface": "#002a00", "fg": "#39e85a", "accent": "#1aa82a"},
+        "ice": {"bg": "#04141f", "surface": "#0a2a4a", "fg": "#a8e8ff", "accent": "#4ec3f0"},
+        "fire": {"bg": "#140600", "surface": "#2a0e00", "fg": "#ffae00", "accent": "#ff5e00"},
+        "neon": {"bg": "#0a0014", "surface": "#160a28", "fg": "#00f5d4", "accent": "#ff2d95"},
         "synthwave": {"bg": "#0d0221", "surface": "#1a0a3a", "fg": "#ffbe0b", "accent": "#ff006e"},
-        "rainbow":   {"bg": "#0a0a0f", "surface": "#16161f", "fg": "#f5f5f5", "accent": "#ff8c00"},
-        "purple":    {"bg": "#0d0420", "surface": "#1a0a3a", "fg": "#d4b0ff", "accent": "#a05cf0"},
-        "mono":      {"bg": "#0a0a0a", "surface": "#1c1c1c", "fg": "#e8e8e8", "accent": "#888888"},
+        "rainbow": {"bg": "#0a0a0f", "surface": "#16161f", "fg": "#f5f5f5", "accent": "#ff8c00"},
+        "purple": {"bg": "#0d0420", "surface": "#1a0a3a", "fg": "#d4b0ff", "accent": "#a05cf0"},
+        "mono": {"bg": "#0a0a0a", "surface": "#1c1c1c", "fg": "#e8e8e8", "accent": "#888888"},
     }
     BINDINGS = [
         # ctrl+c copies the mouse selection when one exists, quits otherwise
@@ -960,17 +1098,25 @@ class AgentApp(App):
         self.workdir = workdir
         self.io = TuiIO(self)
         self.runner = core.ToolRunner(
-            workdir, yolo=yolo, io=self.io, checkpoint=checkpoint, net=net, rag=rag,
-            context_limit=context_limit, sandbox=sandbox, compact_at=compact_at, art=art,
+            workdir,
+            yolo=yolo,
+            io=self.io,
+            checkpoint=checkpoint,
+            net=net,
+            rag=rag,
+            context_limit=context_limit,
+            sandbox=sandbox,
+            compact_at=compact_at,
+            art=art,
         )
         self.store = store or core.SessionStore(workdir)
-        self.msg_q: "queue.Queue[str | None]" = queue.Queue()
+        self.msg_q: queue.Queue[str | None] = queue.Queue()
         self.busy = False
         self.fx_mode = "idle"  # current state, drives the ambient FxBar animation
         self.fx_stats: dict = {}  # live tps/processed/total for data-driven fx
-        self.tok_in = 0          # cumulative session prompt tokens (for /stats)
-        self.tok_out = 0         # cumulative session generated tokens
-        self.stats_on = False    # /stats panel visible
+        self.tok_in = 0  # cumulative session prompt tokens (for /stats)
+        self.tok_out = 0  # cumulative session generated tokens
+        self.stats_on = False  # /stats panel visible
         self._io_prev: tuple | None = None  # (disk_bytes, net_bytes, t) for IO rates
         self.confirming = False
         self.turns = 0
@@ -980,7 +1126,9 @@ class AgentApp(App):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topstats")  # /stats panel, docked top (hidden by default)
-        yield SelectableRichLog(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
+        yield SelectableRichLog(
+            id="body", wrap=True, markup=False, highlight=False, auto_scroll=True
+        )
         yield Static("", id="status")
         yield FxBar()
         yield PasteInput(
@@ -994,8 +1142,11 @@ class AgentApp(App):
         self._pastes.append(text)
         lines, chars = text.count("\n") + 1, len(text)
         self.body_write(
-            Text(f"[staged paste · {lines} lines · {chars} chars — type an instruction "
-                 "(or just Enter) to send]", style="magenta")
+            Text(
+                f"[staged paste · {lines} lines · {chars} chars — type an instruction "
+                "(or just Enter) to send]",
+                style="magenta",
+            )
         )
 
     def _handle_model_command(self, arg: str) -> None:
@@ -1008,6 +1159,7 @@ class AgentApp(App):
             def chosen(target: str | None) -> None:
                 if target and target != self.model:
                     self._switch_model(target)
+
             self.push_screen(ModelSelect(models, self.model), chosen)
             return
         # direct switch by id or list number
@@ -1028,16 +1180,21 @@ class AgentApp(App):
 
         info = {m["id"]: m for m in model_info()}
         cur, tgt = info.get(self.model, {}), info.get(target, {})
-        self.body_write(Text(
-            f"[switching {self.model.split('/')[-1]} ({cur.get('size_h', '?')}) → "
-            f"{target.split('/')[-1]} ({tgt.get('size_h', '?')}) — offloads the current "
-            "model, then loads the new one…]", style="yellow"))
+        self.body_write(
+            Text(
+                f"[switching {self.model.split('/')[-1]} ({cur.get('size_h', '?')}) → "
+                f"{target.split('/')[-1]} ({tgt.get('size_h', '?')}) — offloads the current "
+                "model, then loads the new one…]",
+                style="yellow",
+            )
+        )
 
         def do_swap() -> None:
             try:
                 resp = httpx.post(
                     self.base_url.rstrip("/") + "/v1/models/select",
-                    json={"model": target}, timeout=900,
+                    json={"model": target},
+                    timeout=900,
                 ).json()
                 if resp.get("ok"):
                     self.model = resp["model"]
@@ -1095,7 +1252,9 @@ class AgentApp(App):
     def _save_paused(self) -> None:
         try:
             self.store.save_transcript(self.messages, self.model, paused=True)
-            self.body_write(Text(f"[paused · resume: kas --resume {self.store.id}]", style="#ffb000"))
+            self.body_write(
+                Text(f"[paused · resume: kas --resume {self.store.id}]", style="#ffb000")
+            )
         except Exception as exc:
             self.body_write(Text(f"[pause save failed] {exc}", style="red"))
 
@@ -1112,11 +1271,19 @@ class AgentApp(App):
         self.title = "K.A.S"
         self.sub_title = "Kasra's Agentic Shell"
         for name, c in self.SCREEN_THEMES.items():
-            self.register_theme(Theme(
-                name=name, primary=c["accent"], secondary=c["accent"], accent=c["accent"],
-                foreground=c["fg"], background=c["bg"], surface=c["surface"], panel=c["surface"],
-                dark=True,
-            ))
+            self.register_theme(
+                Theme(
+                    name=name,
+                    primary=c["accent"],
+                    secondary=c["accent"],
+                    accent=c["accent"],
+                    foreground=c["fg"],
+                    background=c["bg"],
+                    surface=c["surface"],
+                    panel=c["surface"],
+                    dark=True,
+                )
+            )
         want = self._initial_theme if self._initial_theme in self.SCREEN_THEMES else "amber"
         self.theme = want
         # An explicit non-default theme pins the fx bar to match; plain "amber"
@@ -1129,8 +1296,11 @@ class AgentApp(App):
         for text, style in tui_lines(model=self.model, extra=f"workdir {self.workdir}"):
             self.body_write(Text(text, style=style))
         self.body_write(
-            Text("type a task; keep typing while it works to steer it · y/N/a at confirmations · / for commands",
-                 style="#cc7000")
+            Text(
+                "type a task; keep typing while it works to steer it · "
+                "y/N/a at confirmations · / for commands",
+                style="#cc7000",
+            )
         )
         if self.messages:
             self.turns = len(self.messages)
@@ -1163,8 +1333,11 @@ class AgentApp(App):
     def register_subagent(self, sub) -> None:
         self.subagents.append(sub)
         self.body_write(
-            Text(f"spawned subagent[{sub.n}]: {sub.label}  ·  /subagents to list, "
-                 f"/subagent {sub.n} to watch", style="cyan")
+            Text(
+                f"spawned subagent[{sub.n}]: {sub.label}  ·  /subagents to list, "
+                f"/subagent {sub.n} to watch",
+                style="cyan",
+            )
         )
 
     def refresh_status(self) -> None:
@@ -1172,7 +1345,9 @@ class AgentApp(App):
 
     def enter_confirm(self, command: str) -> None:
         self.confirming = True
-        self.body_write(Text(f"run `{command}`?  answer below: y / N / a=always", style="bold yellow"))
+        self.body_write(
+            Text(f"run `{command}`?  answer below: y / N / a=always", style="bold yellow")
+        )
         self.query_one(Input).placeholder = "y / N / a=always"
 
     def exit_confirm(self) -> None:
@@ -1218,7 +1393,8 @@ class AgentApp(App):
             t.append_text(self._gauge(used / cl))
             t.append(f" {used // 1000}k/{cl // 1000}k  ", style=V)
         if s.get("layers"):
-            t.append("layers ", style=L); t.append(f"{s['layers']}  ", style=V)
+            t.append("layers ", style=L)
+            t.append(f"{s['layers']}  ", style=V)
         # GPU memory
         ga, gp = s.get("gpu_active_gb"), s.get("gpu_peak_gb")
         if ga is not None:
@@ -1227,7 +1403,8 @@ class AgentApp(App):
                 t.append_text(self._gauge(ga / gp if gp else 0))
             t.append(f" {ga}/{gp}GB  " if gp else f" {ga}GB  ", style=C)
         if s.get("tps"):
-            t.append("tok/s ", style=L); t.append(f"{s['tps']}  ", style=C)
+            t.append("tok/s ", style=L)
+            t.append(f"{s['tps']}  ", style=C)
         t.append("Σ ", style=L)
         t.append(f"{self.tok_in // 1000}k↑ {self.tok_out // 1000}k↓  ", style="#c792ea")
         # system metrics (optional psutil)
@@ -1236,9 +1413,12 @@ class AgentApp(App):
             return t
         try:
             cpu = psutil.cpu_percent()
-            t.append("cpu ", style=L); t.append_text(self._gauge(cpu / 100)); t.append(f" {cpu:.0f}%  ", style=V)
+            t.append("cpu ", style=L)
+            t.append_text(self._gauge(cpu / 100))
+            t.append(f" {cpu:.0f}%  ", style=V)
             vm = psutil.virtual_memory()
-            t.append("ram ", style=L); t.append_text(self._gauge(vm.percent / 100))
+            t.append("ram ", style=L)
+            t.append_text(self._gauge(vm.percent / 100))
             t.append(f" {self._fmt_bytes(vm.used)}/{self._fmt_bytes(vm.total)}  ", style=V)
             d, n, now = psutil.disk_io_counters(), psutil.net_io_counters(), time.time()
             dtot = (d.read_bytes + d.write_bytes) if d else 0
@@ -1246,8 +1426,10 @@ class AgentApp(App):
             if self._io_prev:
                 pd, pn, pt = self._io_prev
                 dt = max(0.1, now - pt)
-                t.append("disk ", style=L); t.append(f"{self._fmt_bytes((dtot - pd) / dt)}/s  ", style="#8a8a8a")
-                t.append("net ", style=L); t.append(f"{self._fmt_bytes((ntot - pn) / dt)}/s", style="#8a8a8a")
+                t.append("disk ", style=L)
+                t.append(f"{self._fmt_bytes((dtot - pd) / dt)}/s  ", style="#8a8a8a")
+                t.append("net ", style=L)
+                t.append(f"{self._fmt_bytes((ntot - pn) / dt)}/s", style="#8a8a8a")
             self._io_prev = (dtot, ntot, now)
         except Exception:
             pass
@@ -1277,27 +1459,31 @@ class AgentApp(App):
                 self._handle_model_command(text[len("/model") :].strip())
             elif text == "/compact":
                 if self.busy:
-                    self.body_write(Text("[/compact: wait until the agent is idle]", style="yellow"))
+                    self.body_write(
+                        Text("[/compact: wait until the agent is idle]", style="yellow")
+                    )
                 elif not self.messages:
                     self.body_write(Text("[nothing to compact yet]", style="yellow"))
                 else:
                     self.msg_q.put("\x00compact")
             elif text == "/self-skill":
                 if self.busy:
-                    self.body_write(Text("[/self-skill: wait until the agent is idle]", style="yellow"))
+                    self.body_write(
+                        Text("[/self-skill: wait until the agent is idle]", style="yellow")
+                    )
                 else:
                     self.msg_q.put("\x00self-skill")
                 return
             elif text == "/yolo":
                 self.runner.yolo = not self.runner.yolo
-                self.body_write(
-                    Text(
-                        f"yolo {'ON — commands run without confirmation' if self.runner.yolo else 'OFF — commands need approval'}",
-                        style="yellow",
-                    )
+                state = (
+                    "ON — commands run without confirmation"
+                    if self.runner.yolo
+                    else "OFF — commands need approval"
                 )
+                self.body_write(Text(f"yolo {state}", style="yellow"))
             elif text.startswith("/subagent"):
-                rest = text[len("/subagent"):].lstrip()
+                rest = text[len("/subagent") :].lstrip()
                 # /subagents (list)  ·  /subagent N (drill in)
                 if rest.lstrip("s").strip() == "" and not rest[:1].isdigit():
                     if not self.subagents:
@@ -1305,7 +1491,9 @@ class AgentApp(App):
                     else:
                         self.body_write(Text("subagents:", style="yellow"))
                         for s in self.subagents:
-                            self.body_write(Text(f"  [{s.n}] {s.status:<7} {s.label}", style="yellow"))
+                            self.body_write(
+                                Text(f"  [{s.n}] {s.status:<7} {s.label}", style="yellow")
+                            )
                         self.body_write(Text("open one with /subagent <n>", style="yellow"))
                 else:
                     arg = rest.lstrip("s").strip()
@@ -1313,23 +1501,31 @@ class AgentApp(App):
                     if match:
                         self.push_screen(SubagentView(match))
                     else:
-                        self.body_write(Text(f"no subagent {arg!r} — /subagents to list", style="red"))
+                        self.body_write(
+                            Text(f"no subagent {arg!r} — /subagents to list", style="red")
+                        )
             elif text == "/fx" or text.startswith("/fx "):
-                arg = text[len("/fx"):].strip().lower()
+                arg = text[len("/fx") :].strip().lower()
                 fx = self.query_one("#fx")
                 if arg in ("", "toggle"):
                     fx.display = not fx.display
                     msg = f"fx {'on' if fx.display else 'off'}"
                 elif arg == "on":
-                    fx.display = True; msg = "fx on"
+                    fx.display = True
+                    msg = "fx on"
                 elif arg == "off":
-                    fx.display = False; msg = "fx off"
+                    fx.display = False
+                    msg = "fx off"
                 elif arg in ("auto", "reset"):
-                    fx._pin = None; fx.display = True; msg = "fx auto (reacts to state)"
+                    fx._pin = None
+                    fx.display = True
+                    msg = "fx auto (reacts to state)"
                 elif arg in ("list", "?"):
                     msg = "fx: " + ", ".join(FxBar.EFFECTS) + " · auto · on · off"
                 elif arg in FxBar.EFFECTS:
-                    fx._pin = arg; fx.display = True; msg = f"fx pinned: {arg}  (/fx auto to unpin)"
+                    fx._pin = arg
+                    fx.display = True
+                    msg = f"fx pinned: {arg}  (/fx auto to unpin)"
                 else:
                     msg = f"unknown fx {arg!r} — try /fx list"
                 self.body_write(Text(msg, style="yellow"))
@@ -1337,7 +1533,7 @@ class AgentApp(App):
             elif text == "/theme" or text.startswith("/theme "):
                 fx = self.query_one("#fx")
                 fx.display = True
-                arg = text[len("/theme"):].strip().lower()
+                arg = text[len("/theme") :].strip().lower()
                 # reskin the whole screen too: a named theme repaints chrome; auto
                 # falls back to the default amber chrome (fx then rotates colours).
                 if arg in self.SCREEN_THEMES:
@@ -1347,36 +1543,47 @@ class AgentApp(App):
                 self.body_write(Text(fx.set_theme(arg), style="yellow"))
                 return
             elif text.startswith("/rag"):
-                arg = text[len("/rag"):].strip().lower()
+                arg = text[len("/rag") :].strip().lower()
                 if arg in ("enable", "on"):
                     self.runner.rag = True
                 elif arg in ("disable", "off"):
                     self.runner.rag = False
                 elif arg:
-                    self.body_write(Text("usage: /rag [enable|disable]", style="yellow")); return
+                    self.body_write(Text("usage: /rag [enable|disable]", style="yellow"))
+                    return
                 self.body_write(
-                    Text(f"recall {'ENABLED — local code/docs/memory search available' if self.runner.rag else 'DISABLED'}",
-                         style="yellow")
+                    Text(
+                        "recall ENABLED — local code/docs/memory search available"
+                        if self.runner.rag
+                        else "recall DISABLED",
+                        style="yellow",
+                    )
                 )
             elif text == "/stats":
                 panel = self.query_one("#topstats")
                 panel.display = not panel.display
                 self.stats_on = panel.display
-                self.body_write(Text(f"stats panel {'on' if panel.display else 'off'}", style="yellow"))
+                self.body_write(
+                    Text(f"stats panel {'on' if panel.display else 'off'}", style="yellow")
+                )
                 return
             elif text == "/ctx" or text.startswith("/ctx "):
                 from agent.core.compaction import ctx_command
-                self.body_write(Text(ctx_command(self.runner, text[len("/ctx"):]), style="yellow"))
+
+                self.body_write(Text(ctx_command(self.runner, text[len("/ctx") :]), style="yellow"))
                 return
             elif text == "/kv" or text.startswith("/kv "):
-                self.body_write(Text(self.runner.kv_status(text[len("/kv"):]), style="yellow"))
+                self.body_write(Text(self.runner.kv_status(text[len("/kv") :]), style="yellow"))
                 return
             elif text == "/art":
                 self.runner.art = not self.runner.art
-                self.body_write(Text(
-                    f"image generation {'ENABLED — generate_image available' if self.runner.art else 'DISABLED'}"
-                    + ("" if self.runner.art else "") + " (needs the 'art' extra: uv add mflux)",
-                    style="yellow"))
+                state = "ENABLED — generate_image available" if self.runner.art else "DISABLED"
+                self.body_write(
+                    Text(
+                        f"image generation {state} (needs the 'art' extra: uv add mflux)",
+                        style="yellow",
+                    )
+                )
                 return
             elif text == "/status":
                 self.body_write(
@@ -1403,7 +1610,9 @@ class AgentApp(App):
             text = f"{text}\n\n{blob}" if text else blob
         if self.busy:
             self.io.steer_q.put(text)
-            self.body_write(Text("[queued steering — applies at the next tool boundary]", style="magenta"))
+            self.body_write(
+                Text("[queued steering — applies at the next tool boundary]", style="magenta")
+            )
         else:
             preview = text.splitlines()[0][:80] + (" …" if "\n" in text or len(text) > 80 else "")
             self.body_write(Text(f"\nyou> {preview}", style="bold"))
@@ -1420,37 +1629,59 @@ class AgentApp(App):
             self.busy = True
             try:
                 if task == "\x00compact":
-                    extra = (core.RAG_TOOLS if self.runner.rag else []) + \
-                            (core.WEB_TOOLS if self.runner.net else [])
+                    extra = (core.RAG_TOOLS if self.runner.rag else []) + (
+                        core.WEB_TOOLS if self.runner.net else []
+                    )
                     core.compact_messages(
-                        self.client, messages, self.io, self.model,
-                        store=self.store, max_tokens=self.max_tokens,
+                        self.client,
+                        messages,
+                        self.io,
+                        self.model,
+                        store=self.store,
+                        max_tokens=self.max_tokens,
                         tools=core.TOOLS + [core.SUBAGENT_TOOL] + extra,
                     )
                     continue
                 if task == "\x00self-skill":
-                    core.self_skill(self.client, self.io, self.model, self.workdir,
-                                    max_tokens=self.max_tokens)
+                    core.self_skill(
+                        self.client, self.io, self.model, self.workdir, max_tokens=self.max_tokens
+                    )
                     continue
                 if task == "\x00continue":
                     # resume a mid-task session: if the model owes a turn, just
                     # run; if the last turn was the agent's, nudge it onward.
                     if messages and messages[-1].get("role") == "assistant":
-                        messages.append({"role": "user", "content":
-                            "[resumed] Continue the task from exactly where you left off."})
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "[resumed] Continue the task from exactly where you left off."
+                                ),
+                            }
+                        )
                 else:
                     messages.append({"role": "user", "content": task})
                 core.agent_turn(
-                    self.client, messages, self.runner, self.io,
-                    model=self.model, max_tokens=self.max_tokens, store=self.store,
+                    self.client,
+                    messages,
+                    self.runner,
+                    self.io,
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    store=self.store,
                 )
                 # steering submitted after the final response starts a new turn
                 leftovers = self.io.drain_steers()
                 while leftovers:
                     messages.append({"role": "user", "content": "\n".join(leftovers)})
                     core.agent_turn(
-                        self.client, messages, self.runner, self.io,
-                        model=self.model, max_tokens=self.max_tokens, store=self.store,
+                        self.client,
+                        messages,
+                        self.runner,
+                        self.io,
+                        model=self.model,
+                        max_tokens=self.max_tokens,
+                        store=self.store,
                     )
                     leftovers = self.io.drain_steers()
             except anthropic.APIError as exc:
@@ -1472,7 +1703,11 @@ class AgentApp(App):
                         Text(f"[paused · resume: kas --resume {self.store.id}]", style="#ffb000"),
                     )
                     self.call_from_thread(self.exit)
-                    return
+                    return  # noqa: B012  — pause path intentionally exits the worker loop
+
+    def _update_topstats(self, txt: Text) -> None:
+        """Update the top stats panel; runs on the UI thread (via call_from_thread)."""
+        self.query_one("#topstats", Static).update(txt)
 
     def _status_loop(self) -> None:
         url = self.base_url.rstrip("/") + "/v1/stats"
@@ -1486,9 +1721,13 @@ class AgentApp(App):
             # announce reachability transitions in the work view (reconnect mark)
             if up != online:
                 try:
-                    self.call_from_thread(self.body_write, Text(
-                        "● reconnected to server" if up else "○ server unreachable — retrying…",
-                        style="#3fb950" if up else "#ff5f5f"))
+                    self.call_from_thread(
+                        self.body_write,
+                        Text(
+                            "● reconnected to server" if up else "○ server unreachable — retrying…",
+                            style="#3fb950" if up else "#ff5f5f",
+                        ),
+                    )
                 except Exception:
                     return
                 online = up
@@ -1498,26 +1737,44 @@ class AgentApp(App):
                 ping = f" · ping {age:g}s ago"
             stale = age is not None and age > 20  # pings should arrive ~every 5s
             if not up:
-                conn, conn_style, work, mode = "○ offline", "#ff5f5f", "server unreachable", "offline"
+                conn, conn_style, work, mode = (
+                    "○ offline",
+                    "#ff5f5f",
+                    "server unreachable",
+                    "offline",
+                )
             elif s.get("active") and s.get("phase") == "prefill":
                 conn = "◓ prefill" if not stale else "◓ prefill ⚠"
                 conn_style = "#ffa657" if not stale else "#ff5f5f"  # amber, red if pings stalled
-                work = (f"{s.get('processed', 0)}/{s.get('total', '?')} tok "
-                        f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s{ping}")
+                work = (
+                    f"{s.get('processed', 0)}/{s.get('total', '?')} tok "
+                    f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s{ping}"
+                )
                 mode = "prefill"
             elif s.get("active"):
                 conn = "◉ streaming" if not stale else "◉ streaming ⚠"
                 conn_style = "#39d3e8" if not stale else "#ff5f5f"  # cyan, red if pings stalled
-                work = (f"{s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
-                        f"· {s.get('elapsed', 0):.0f}s{ping}")
+                work = (
+                    f"{s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
+                    f"· {s.get('elapsed', 0):.0f}s{ping}"
+                )
                 mode = "generating"
             elif self.busy:
-                conn, conn_style, work, mode = "◌ tools", "#c792ea", "running tools", "tools"  # violet
+                conn, conn_style, work, mode = (
+                    "◌ tools",
+                    "#c792ea",
+                    "running tools",
+                    "tools",
+                )  # violet
             else:
                 conn, conn_style, work, mode = "● live", "#3fb950", "idle", "idle"  # green
             self.fx_mode = mode  # drive the ambient FxBar animation by current state
-            self.fx_stats = {"tps": s.get("tps"), "processed": s.get("processed"),
-                             "total": s.get("total"), "ping_age": age}
+            self.fx_stats = {
+                "tps": s.get("tps"),
+                "processed": s.get("processed"),
+                "total": s.get("total"),
+                "ping_age": age,
+            }
             line = Text()
             line.append(conn + " ", style=conn_style)
             line.append(f"· {self.model} · yolo {'ON' if self.runner.yolo else 'off'} · {work}")
@@ -1526,13 +1783,14 @@ class AgentApp(App):
                 line.append(f" · steering queued: {queued}")
             if self.subagents:
                 running = sum(1 for a in self.subagents if a.status == "running")
-                line.append(f" · subagents: {len(self.subagents)}"
-                            + (f" ({running} running)" if running else ""))
+                line.append(
+                    f" · subagents: {len(self.subagents)}"
+                    + (f" ({running} running)" if running else "")
+                )
             try:
                 self.call_from_thread(self.update_status, line)
                 if self.stats_on:
-                    self.call_from_thread(
-                        lambda txt=self._stats_line(s): self.query_one("#topstats", Static).update(txt))
+                    self.call_from_thread(self._update_topstats, self._stats_line(s))
             except Exception:
                 return
             time.sleep(1.0)

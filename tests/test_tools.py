@@ -182,7 +182,7 @@ with tempfile.TemporaryDirectory() as tmp:
         _time.sleep(0.05)
     _cfg.ART_BIN = _saved
     assert "#1" in line and "error" in line, line
-    assert "#1" in r.tool_image_status()[0]               # list-all view
+    assert "#1" in r.tool_image_status()[0]  # list-all view
     assert r.tool_image_status(99)[1] and "no image task" in r.tool_image_status(99)[0]
     print("async image tasks: OK")
 

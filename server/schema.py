@@ -5,7 +5,7 @@ Only the subset needed for text + tool-use agentic loops. Unknown fields
 Anthropic SDK clients work unmodified.
 """
 
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -28,7 +28,7 @@ class ToolResultBlock(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["tool_result"] = "tool_result"
     tool_use_id: str
-    content: Union[str, list[dict[str, Any]], None] = None
+    content: str | list[dict[str, Any]] | None = None
     is_error: bool = False
 
 
@@ -39,13 +39,13 @@ class ThinkingBlock(BaseModel):
     signature: str = ""
 
 
-ContentBlock = Union[TextBlock, ToolUseBlock, ToolResultBlock, ThinkingBlock]
+ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock
 
 
 class Message(BaseModel):
     model_config = ConfigDict(extra="ignore")
     role: Literal["user", "assistant"]
-    content: Union[str, list[ContentBlock]]
+    content: str | list[ContentBlock]
 
 
 class ToolDef(BaseModel):
@@ -60,7 +60,7 @@ class MessagesRequest(BaseModel):
     model: str
     max_tokens: int = 1024
     messages: list[Message]
-    system: Union[str, list[dict[str, Any]], None] = None
+    system: str | list[dict[str, Any]] | None = None
     tools: list[ToolDef] = []
     tool_choice: dict[str, Any] | None = None
     stream: bool = False

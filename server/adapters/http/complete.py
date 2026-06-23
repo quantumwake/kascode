@@ -12,7 +12,10 @@ from ...schema import MessagesRequest
 
 
 def complete(
-    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main",
+    req: MessagesRequest,
+    engine: EngineLike,
+    memos: dict[str, dict],
+    thread: str = "main",
     persist_dir: str | None = None,
 ) -> JSONResponse:
     content: list[dict[str, Any]] = []

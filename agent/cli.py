@@ -31,8 +31,12 @@ def serve_main(argv: list[str]) -> None:
     ap = argparse.ArgumentParser(prog="kas serve")
     ap.add_argument("--port", type=int, default=int(os.environ.get("KAS_PORT", "8765")))
     ap.add_argument("--model", default=None, help="model repo to load")
-    ap.add_argument("--daemon", action=argparse.BooleanOptionalAction, default=True,
-                    help="run in background (default; --no-daemon to run in foreground)")
+    ap.add_argument(
+        "--daemon",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="run in background (default; --no-daemon to run in foreground)",
+    )
     ap.add_argument("--stop", action="store_true", help="stop the running server")
     ap.add_argument("--status", action="store_true", help="show server status")
     ap.add_argument("--logs", action="store_true", help="tail the server log")
@@ -54,7 +58,9 @@ def serve_main(argv: list[str]) -> None:
     if a.stop:
         p = pid()
         if p:
-            os.killpg(os.getpgid(p), signal.SIGTERM) if hasattr(os, "getpgid") else os.kill(p, signal.SIGTERM)
+            os.killpg(os.getpgid(p), signal.SIGTERM) if hasattr(os, "getpgid") else os.kill(
+                p, signal.SIGTERM
+            )
             pidf.unlink(missing_ok=True)
             print(f"stopped (pid {p})")
         else:
@@ -87,6 +93,7 @@ def serve_main(argv: list[str]) -> None:
 
     if not a.daemon:  # foreground: become the server (the kas-server process)
         from server import cli as server_cli
+
         sys.argv = ["kas-server", "--port", str(a.port)]
         server_cli.main()
         return
@@ -127,27 +134,62 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="kas", description="kas — your local agent")
     ap.add_argument("--yolo", action="store_true", help="run bash commands without confirmation")
     ap.add_argument("--workdir", default=".", help="working directory for tools")
-    ap.add_argument("--model", default=config.MODEL, help="model id (default: whatever the server loaded)")
+    ap.add_argument(
+        "--model", default=config.MODEL, help="model id (default: whatever the server loaded)"
+    )
     ap.add_argument("--base-url", default=config.BASE_URL, help="inference server URL")
-    ap.add_argument("--max-tokens", type=int, default=config.MAX_TOKENS, help="output token cap per response")
-    ap.add_argument("--compact-at", type=int, default=config.COMPACT_AT, help="auto-compact context past this many input tokens (0 disables)")
+    ap.add_argument(
+        "--max-tokens", type=int, default=config.MAX_TOKENS, help="output token cap per response"
+    )
+    ap.add_argument(
+        "--compact-at",
+        type=int,
+        default=config.COMPACT_AT,
+        help="auto-compact context past this many input tokens (0 disables)",
+    )
     ap.add_argument("--plain", action="store_true", help="plain REPL instead of the TUI")
-    ap.add_argument("--checkpoint", action="store_true",
-                    help="commit per-turn checkpoints even when workdir is a pre-existing repo")
-    ap.add_argument("--net", action="store_true", default=os.environ.get("KAS_NET") == "1",
-                    help="enable web_search/web_fetch (off by default — kas is offline)")
-    ap.add_argument("--rag", action=argparse.BooleanOptionalAction,
-                    default=os.environ.get("KAS_RAG", "1") != "0",
-                    help="recall tool — local BM25 over code/docs/memory (on by default; --no-rag to disable)")
-    ap.add_argument("--sandbox", action="store_true", default=os.environ.get("KAS_SANDBOX") == "1",
-                    help="jail the file tools to the workdir (reject absolute/.. escapes)")
-    ap.add_argument("--art", action="store_true", default=os.environ.get("KAS_ART") == "1",
-                    help="enable generate_image (local FLUX via mflux; needs the 'art' extra)")
-    ap.add_argument("--theme", default=os.environ.get("KAS_THEME", "amber"),
-                    help="initial TUI colour theme: amber (default), matrix, ice, fire, neon, "
-                         "synthwave, rainbow, purple, mono (also switchable live with /theme)")
-    ap.add_argument("--resume", nargs="?", const="__latest__", metavar="SESSION_ID",
-                    help="resume a saved session (latest for this workdir if no id given)")
+    ap.add_argument(
+        "--checkpoint",
+        action="store_true",
+        help="commit per-turn checkpoints even when workdir is a pre-existing repo",
+    )
+    ap.add_argument(
+        "--net",
+        action="store_true",
+        default=os.environ.get("KAS_NET") == "1",
+        help="enable web_search/web_fetch (off by default — kas is offline)",
+    )
+    ap.add_argument(
+        "--rag",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("KAS_RAG", "1") != "0",
+        help="recall tool — local BM25 over code/docs/memory (on by default; --no-rag to disable)",
+    )
+    ap.add_argument(
+        "--sandbox",
+        action="store_true",
+        default=os.environ.get("KAS_SANDBOX") == "1",
+        help="jail the file tools to the workdir (reject absolute/.. escapes)",
+    )
+    ap.add_argument(
+        "--art",
+        action="store_true",
+        default=os.environ.get("KAS_ART") == "1",
+        help="enable generate_image (local FLUX via mflux; needs the 'art' extra)",
+    )
+    ap.add_argument(
+        "--theme",
+        default=os.environ.get("KAS_THEME", "amber"),
+        help="initial TUI colour theme: amber (default), matrix, ice, fire, neon, "
+        "synthwave, rainbow, purple, mono (also switchable live with /theme)",
+    )
+    ap.add_argument(
+        "--resume",
+        nargs="?",
+        const="__latest__",
+        metavar="SESSION_ID",
+        help="resume a saved session (latest for this workdir if no id given)",
+    )
     ap.add_argument("--sessions", action="store_true", help="list resumable sessions and exit")
     ap.add_argument("task", nargs="*", help="optional one-shot task; omit for interactive mode")
     args = ap.parse_args()
@@ -187,7 +229,10 @@ def main() -> None:
         wanted = None if args.resume == "__latest__" else args.resume
         store, messages = SessionStore.resume(workdir, wanted)
         if store is None:
-            sys.exit(f"no resumable session{f' {wanted!r}' if wanted else ''} under {workdir}/.agent/sessions/")
+            sys.exit(
+                f"no resumable session{f' {wanted!r}' if wanted else ''} "
+                f"under {workdir}/.agent/sessions/"
+            )
         print(f"resumed session {store.id} ({len(messages)} messages)")
     if store is None:
         store = SessionStore(workdir)
@@ -205,9 +250,18 @@ def main() -> None:
 
     if args.task:  # one-shot
         io = ConsoleIO(config.BASE_URL)
-        runner = ToolRunner(workdir, yolo=args.yolo, io=io, checkpoint=args.checkpoint,
-                            net=args.net, rag=args.rag, context_limit=context_limit,
-                            sandbox=args.sandbox, compact_at=config.COMPACT_AT, art=args.art)
+        runner = ToolRunner(
+            workdir,
+            yolo=args.yolo,
+            io=io,
+            checkpoint=args.checkpoint,
+            net=args.net,
+            rag=args.rag,
+            context_limit=context_limit,
+            sandbox=args.sandbox,
+            compact_at=config.COMPACT_AT,
+            art=args.art,
+        )
         print_console(model=config.MODEL, extra=f"workdir {workdir} · yolo {args.yolo}")
         messages.append({"role": "user", "content": " ".join(args.task)})
         try:
@@ -242,8 +296,16 @@ def main() -> None:
 
     # plain REPL fallback
     io = ConsoleIO(config.BASE_URL)
-    runner = ToolRunner(workdir, yolo=args.yolo, io=io, checkpoint=args.checkpoint,
-                        net=args.net, rag=args.rag, context_limit=context_limit, sandbox=args.sandbox)
+    runner = ToolRunner(
+        workdir,
+        yolo=args.yolo,
+        io=io,
+        checkpoint=args.checkpoint,
+        net=args.net,
+        rag=args.rag,
+        context_limit=context_limit,
+        sandbox=args.sandbox,
+    )
     print_console(model=config.MODEL, extra=f"workdir {workdir} · yolo {args.yolo}")
     print("REPL commands: /yolo  /status  exit · at a confirm prompt: y / N / a=always")
     while True:
@@ -259,22 +321,37 @@ def main() -> None:
         if user.startswith("/"):
             if user == "/yolo":
                 runner.yolo = not runner.yolo
-                print(f"yolo {'ON — commands run without confirmation' if runner.yolo else 'OFF — commands need approval'}")
+                state = (
+                    "ON — commands run without confirmation"
+                    if runner.yolo
+                    else "OFF — commands need approval"
+                )
+                print(f"yolo {state}")
             elif user == "/status":
-                print(f"model={config.MODEL}  yolo={runner.yolo}  workdir={runner.workdir}  turns={len(messages)}")
+                print(
+                    f"model={config.MODEL}  yolo={runner.yolo}  "
+                    f"workdir={runner.workdir}  turns={len(messages)}"
+                )
             elif user == "/ctx" or user.startswith("/ctx "):
                 from agent.core.compaction import ctx_command
-                print(ctx_command(runner, user[len("/ctx"):]))
+
+                print(ctx_command(runner, user[len("/ctx") :]))
             elif user == "/art":
                 runner.art = not runner.art
-                print(f"image generation {'ON (needs mflux: uv add mflux)' if runner.art else 'OFF'}")
+                print(
+                    f"image generation {'ON (needs mflux: uv add mflux)' if runner.art else 'OFF'}"
+                )
             elif user == "/kv" or user.startswith("/kv "):
-                print(runner.kv_status(user[len("/kv"):]))
+                print(runner.kv_status(user[len("/kv") :]))
             elif user == "/self-skill":
                 from agent.core.self_skill import self_skill
+
                 self_skill(client, io, config.MODEL, workdir, max_tokens=config.MAX_TOKENS)
             else:
-                print("commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  /kv  /art  /status  exit")
+                print(
+                    "commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  "
+                    "/kv  /art  /status  exit"
+                )
             continue
         messages.append({"role": "user", "content": user})
         try:

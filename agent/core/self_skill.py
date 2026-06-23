@@ -63,13 +63,18 @@ def self_skill(client, io, model: str, workdir, max_tokens: int = 8192) -> pathl
         io.notice("[self-skill: no session history yet — nothing to learn from]")
         return None
     io.notice("[self-skill: reviewing past sessions for recurring patterns + skill gaps…]")
-    req = [{"role": "user", "content": f"{SELF_SKILL_PROMPT}\n\n=== SESSION HISTORY ===\n{history}"}]
+    req = [
+        {"role": "user", "content": f"{SELF_SKILL_PROMPT}\n\n=== SESSION HISTORY ===\n{history}"}
+    ]
     io.stream_started()
     response = None
     try:
         with client.messages.stream(
-            model=model, max_tokens=max_tokens, system=SYSTEM,
-            thinking={"type": "adaptive"}, messages=req,
+            model=model,
+            max_tokens=max_tokens,
+            system=SYSTEM,
+            thinking={"type": "adaptive"},
+            messages=req,
         ) as stream:
             for event in stream:
                 if event.type != "content_block_delta":

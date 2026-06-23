@@ -3,7 +3,8 @@
 The MLX engine in server/engine.py is the driven adapter that satisfies these.
 """
 
-from typing import Any, Iterator, Protocol
+from collections.abc import Iterator
+from typing import Any, Protocol
 
 
 class DialectLike(Protocol):

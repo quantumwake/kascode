@@ -45,7 +45,7 @@ def echo_matches(echo_content: Any, blocks: list[dict[str, Any]]) -> bool:
     echo = norm_blocks(echo_content)
     if len(echo) != len(blocks):
         return False
-    for e, b in zip(echo, blocks):
+    for e, b in zip(echo, blocks, strict=False):
         if e.get("type") != b["type"]:
             return False
         if b["type"] == "text" and e.get("text", "").strip() != b["text"].strip():

@@ -31,8 +31,8 @@ MAX_TOOL_OUTPUT = 8_000
 # tool echoes the exact command it ran on failure (easy to correct / self-fix).
 ART_BIN = os.environ.get("KAS_ART_BIN", "mflux-generate")
 ART_MODEL = os.environ.get("KAS_ART_MODEL", "flux2-klein-4b")  # small, fast, fits beside the LLM
-ART_STEPS = int(os.environ.get("KAS_ART_STEPS", "4"))          # distilled FLUX needs few steps
-ART_QUANTIZE = os.environ.get("KAS_ART_QUANTIZE", "8")         # "" to disable
+ART_STEPS = int(os.environ.get("KAS_ART_STEPS", "4"))  # distilled FLUX needs few steps
+ART_QUANTIZE = os.environ.get("KAS_ART_QUANTIZE", "8")  # "" to disable
 ART_OUTPUT_DIR = os.environ.get("KAS_ART_OUTPUT_DIR", "assets/generated")
 # Consistency levers (see docs): a style preamble prepended to EVERY prompt so a
 # whole sprite set shares look/angle/scale, plus LoRA files (path[,path]) for a

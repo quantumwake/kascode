@@ -52,16 +52,25 @@ def req(messages, tools=None, system="sys", thinking=False):
 # ---------------------------------------------------------------------------
 
 assert _norm_blocks("hi") == [{"type": "text", "text": "hi"}]
-blocks = [{"type": "text", "text": "Let me check."}, {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}}]
+blocks = [
+    {"type": "text", "text": "Let me check."},
+    {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}},
+]
 
 # Exact match (whitespace tolerant on text/thinking).
 assert _echo_matches(
-    [{"type": "text", "text": "  Let me check.  "}, {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}}],
+    [
+        {"type": "text", "text": "  Let me check.  "},
+        {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}},
+    ],
     blocks,
 )
 # Tool input divergence -> no match.
 assert not _echo_matches(
-    [{"type": "text", "text": "Let me check."}, {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "London"}}],
+    [
+        {"type": "text", "text": "Let me check."},
+        {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "London"}},
+    ],
     blocks,
 )
 # Block count divergence -> no match.
@@ -76,10 +85,14 @@ print("_norm_blocks / _echo_matches: OK")
 g = GemmaDialect()
 # tool results only: starts directly at <|tool_response>, no turn closure.
 tail = g.continuation_tail([("get_weather", "18C rain")], [], thinking=False)
-assert tail == '<|tool_response>response:get_weather{value:<|"|>18C rain<|"|>}<tool_response|>', repr(tail)
+assert tail == '<|tool_response>response:get_weather{value:<|"|>18C rain<|"|>}<tool_response|>', (
+    repr(tail)
+)
 # pure text turn (no results): supplies <turn|> closure, opens a thought when not thinking.
 tail = g.continuation_tail([], ["next thing"], thinking=False)
-assert tail == "<turn|>\n<|turn>user\nnext thing<turn|>\n<|turn>model\n<|channel>thought\n<channel|>", repr(tail)
+assert (
+    tail == "<turn|>\n<|turn>user\nnext thing<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+), repr(tail)
 # text turn with thinking on: no pre-opened empty thought.
 tail = g.continuation_tail([], ["next thing"], thinking=True)
 assert tail == "<turn|>\n<|turn>user\nnext thing<turn|>\n<|turn>model\n", repr(tail)
@@ -99,13 +112,16 @@ assert tail == (
     "<|im_start|>assistant\n<think>\n\n</think>\n\n"
 ), repr(tail)
 tail = q.continuation_tail([], ["hello"], thinking=True)
-assert tail == "<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n", repr(tail)
+assert tail == "<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n", (
+    repr(tail)
+)
 print("qwen continuation_tail: OK")
 
 
 # ---------------------------------------------------------------------------
 # _try_continuation end-to-end: cached tokens + encoded tail
 # ---------------------------------------------------------------------------
+
 
 def run_case(dialect, thinking):
     cached = [1, 2, 3, 4]
@@ -132,7 +148,12 @@ def run_case(dialect, thinking):
         prev
         + [
             {"role": "assistant", "content": echo_blocks},
-            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "18C rain"}]},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_1", "content": "18C rain"}
+                ],
+            },
         ],
         thinking=thinking,
     )

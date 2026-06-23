@@ -26,3 +26,9 @@ dist/
 
 # editor
 .idea/
+
+# dev tooling caches (Phase 0)
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

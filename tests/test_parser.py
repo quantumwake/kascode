@@ -41,7 +41,8 @@ assert p.tool_calls[0]["input"] == {"city": "Paris", "units": "metric"}, p.tool_
 
 # 2. argument syntax: nested objects, arrays, numbers, booleans
 call = parse_tool_call_body(
-    'call:run{cmd:<|"|>ls -la<|"|>,count:3,ratio:0.5,deep:{<|"|>k<|"|>:[1,true,<|"|>x<|"|>]},flag:false}'
+    'call:run{cmd:<|"|>ls -la<|"|>,count:3,ratio:0.5,'
+    'deep:{<|"|>k<|"|>:[1,true,<|"|>x<|"|>]},flag:false}'
 )
 assert call["input"] == {
     "cmd": "ls -la",
@@ -81,7 +82,12 @@ msgs = [
         content=[
             {"type": "thinking", "thinking": "need the tool", "signature": ""},
             {"type": "text", "text": "Checking."},
-            {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}},
+            {
+                "type": "tool_use",
+                "id": "toolu_1",
+                "name": "get_weather",
+                "input": {"city": "Paris"},
+            },
         ],
     ),
     Message(
@@ -115,7 +121,9 @@ SCHEMAS = {"get_weather": {"city": "string", "retries": "integer"}}
 # 8. thinking pre-opened by the generation prompt; awkward chunking
 p = StreamParser(QwenDialect(), schemas=SCHEMAS, thinking=True)
 events = collect(p, [QWEN_CANNED[i : i + 7] for i in range(0, len(QWEN_CANNED), 7)])
-assert merged(events, "thinking") == "I should check the weather for the user.\n", repr(merged(events, "thinking"))
+assert merged(events, "thinking") == "I should check the weather for the user.\n", repr(
+    merged(events, "thinking")
+)
 assert merged(events, "text") == "Let me check.\n\n"
 assert p.tool_calls[0]["name"] == "get_weather"
 assert p.tool_calls[0]["input"] == {"city": "Paris", "retries": 3}, p.tool_calls
@@ -127,12 +135,22 @@ assert merged(events, "text") == "plain answer more text", repr(merged(events, "
 assert merged(events, "thinking") == "\nhmm\n", repr(merged(events, "thinking"))
 
 # 10. multi-line string parameter survives verbatim; schema coercion of bool/array
-p = StreamParser(QwenDialect(), schemas={"write_file": {"content": "string", "append": "boolean", "tags": "array"}}, thinking=False)
-body = ("<tool_call>\n<function=write_file>\n<parameter=content>\nline one\nline two\n</parameter>\n"
-        "<parameter=append>\ntrue\n</parameter>\n<parameter=tags>\n[\"a\", \"b\"]\n</parameter>\n</function>\n</tool_call>")
+p = StreamParser(
+    QwenDialect(),
+    schemas={"write_file": {"content": "string", "append": "boolean", "tags": "array"}},
+    thinking=False,
+)
+body = (
+    "<tool_call>\n<function=write_file>\n"
+    "<parameter=content>\nline one\nline two\n</parameter>\n"
+    "<parameter=append>\ntrue\n</parameter>\n"
+    '<parameter=tags>\n["a", "b"]\n</parameter>\n</function>\n</tool_call>'
+)
 events = collect(p, [body])
 call = p.tool_calls[0]
-assert call["input"] == {"content": "line one\nline two", "append": True, "tags": ["a", "b"]}, call["input"]
+assert call["input"] == {"content": "line one\nline two", "append": True, "tags": ["a", "b"]}, call[
+    "input"
+]
 
 # 11. malformed qwen call surfaces as text
 p = StreamParser(QwenDialect(), thinking=False)
@@ -146,10 +164,18 @@ assert detect_dialect(None).name == "gemma"
 
 # 13. qwen assistant entry embeds thinking in content
 chat = to_chat_messages(
-    [Message(role="assistant", content=[
-        {"type": "thinking", "thinking": "plan", "signature": ""},
-        {"type": "text", "text": "Done."}])],
-    None, None, dialect=QwenDialect(),
+    [
+        Message(
+            role="assistant",
+            content=[
+                {"type": "thinking", "thinking": "plan", "signature": ""},
+                {"type": "text", "text": "Done."},
+            ],
+        )
+    ],
+    None,
+    None,
+    dialect=QwenDialect(),
 )
 assert chat[0]["content"] == "<think>\nplan\n</think>\n\nDone.", chat
 

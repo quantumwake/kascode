@@ -82,8 +82,10 @@ ctx_command(r, "120k")
 assert r.compact_at == 120_000, r.compact_at
 
 # valve toggles.
-ctx_command(r, "valve off"); assert r.tps_valve is False
-ctx_command(r, "valve on"); assert r.tps_valve is True
+ctx_command(r, "valve off")
+assert r.tps_valve is False
+ctx_command(r, "valve on")
+assert r.tps_valve is True
 
 # bad input is reported, not crashed, and leaves state intact.
 before = r.compact_at

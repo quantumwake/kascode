@@ -15,7 +15,8 @@ the per-thread continuation memo for the next turn.
 
 import logging
 import time
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from ..config import DEFAULT_MAX_TOKENS
 from ..prompting import StreamParser, to_chat_messages, tools_payload
@@ -29,7 +30,10 @@ KEEPALIVE_SECS = 5.0
 
 
 def run(
-    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main",
+    req: MessagesRequest,
+    engine: EngineLike,
+    memos: dict[str, dict],
+    thread: str = "main",
     persist_dir: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Generate and yield normalized events (see module docstring)."""
@@ -45,8 +49,7 @@ def run(
         )
     schemas = {
         t.name: {
-            k: v.get("type", "string")
-            for k, v in (t.input_schema.get("properties") or {}).items()
+            k: v.get("type", "string") for k, v in (t.input_schema.get("properties") or {}).items()
         }
         for t in req.tools
     }
@@ -123,7 +126,8 @@ def run(
             elif chunk.finish_reason == "stop_sequence":
                 stop_reason = "stop_sequence"
             log.info(
-                "in=%d tok (cache hit %d, prefilled %d @ %.0f tok/s) | out=%d tok @ %.1f tok/s | peak %.1f GB | %s",
+                "in=%d tok (cache hit %d, prefilled %d @ %.0f tok/s) | "
+                "out=%d tok @ %.1f tok/s | peak %.1f GB | %s",
                 chunk.prompt_tokens,
                 chunk.cached_tokens,
                 chunk.prompt_tokens - chunk.cached_tokens,

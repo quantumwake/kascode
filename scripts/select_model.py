@@ -48,12 +48,14 @@ def model_info() -> list[dict]:
                 if any(f.is_symlink() and not f.exists() for f in snap.rglob("*")):
                     partial = True
                     break
-        out.append({
-            "id": d.name.removeprefix("models--").replace("--", "/"),
-            "size": size,
-            "size_h": _human(size),
-            "complete": not partial,
-        })
+        out.append(
+            {
+                "id": d.name.removeprefix("models--").replace("--", "/"),
+                "size": size,
+                "size_h": _human(size),
+                "complete": not partial,
+            }
+        )
     return out
 
 

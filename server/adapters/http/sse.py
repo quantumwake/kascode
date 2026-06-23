@@ -3,7 +3,8 @@
 import json
 import logging
 import uuid
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from ...core.pipeline import run
 from ...core.ports import EngineLike
@@ -17,7 +18,10 @@ def sse(event: str, data: dict[str, Any]) -> str:
 
 
 def stream(
-    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main",
+    req: MessagesRequest,
+    engine: EngineLike,
+    memos: dict[str, dict],
+    thread: str = "main",
     persist_dir: str | None = None,
 ) -> Iterator[str]:
     msg_id = "msg_" + uuid.uuid4().hex[:24]
@@ -53,8 +57,11 @@ def stream(
         if ev["kind"] == "ping":
             # Anthropic's ping event is normally bare; we attach live progress
             # under "_stats" (ignored by the SDK, read by our TUI status line).
-            detail = {k: ev[k] for k in ("phase", "generated", "tps", "elapsed", "buffering")
-                      if ev.get(k) is not None}
+            detail = {
+                k: ev[k]
+                for k in ("phase", "generated", "tps", "elapsed", "buffering")
+                if ev.get(k) is not None
+            }
             yield sse("ping", {"type": "ping", **({"_stats": detail} if detail else {})})
         elif ev["kind"] in ("text", "thinking"):
             if block_open != ev["kind"]:
@@ -127,7 +134,10 @@ def stream(
 
 
 def stream_safe(
-    req: MessagesRequest, engine: EngineLike, memos: dict[str, dict], thread: str = "main",
+    req: MessagesRequest,
+    engine: EngineLike,
+    memos: dict[str, dict],
+    thread: str = "main",
     persist_dir: str | None = None,
 ) -> Iterator[str]:
     """Wrap stream so server-side failures become an SSE error event the SDK
