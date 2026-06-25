@@ -49,7 +49,9 @@ assert any("Done." in x for x in w), w  # final answer
 print("replay: user + thinking + text + tool_use + tool_result all rendered")
 
 # a tool_result error renders with the ✗ marker
-err = FakeApp([{"role": "user", "content": [{"type": "tool_result", "content": "boom", "is_error": True}]}])
+err = FakeApp(
+    [{"role": "user", "content": [{"type": "tool_result", "content": "boom", "is_error": True}]}]
+)
 AgentApp._replay_transcript(err)
 assert any("✗ boom" in x for x in err.writes), err.writes
 print("replay: error tool_result marked ✗")
