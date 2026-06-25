@@ -107,8 +107,12 @@ class CommandHandler:
                 Text("[queued steering — applies at the next tool boundary]", style="magenta")
             )
         else:
+            # Open the turn: a "you" separator + the message, then arm the "kas"
+            # separator that TuiIO writes before the first agent output.
+            self.turn_rule("you", "#3fb950")
             preview = text.splitlines()[0][:80] + (" …" if "\n" in text or len(text) > 80 else "")
-            self.body_write(Text(f"\nyou> {preview}", style="bold"))
+            self.body_write(Text(preview))
+            self._agent_header_pending = True
             self.msg_q.put(text)
 
     def _dispatch_command(self, text: str) -> None:

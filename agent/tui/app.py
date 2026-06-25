@@ -18,6 +18,7 @@ try:
     import psutil  # optional ('stats' extra): CPU/RAM/disk/net for the /stats panel
 except ImportError:
     psutil = None
+from rich.rule import Rule
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -163,6 +164,9 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self._alive = True
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
         self.subagents: list = []  # SubagentIO registry (this session)
+        # Set when a user message is submitted; TuiIO writes the "kas" turn rule
+        # before the first agent output, then clears it (one header per turn).
+        self._agent_header_pending = False
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topstats")  # /stats panel, docked top (hidden by default)
@@ -308,6 +312,11 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
 
     def body_write(self, renderable) -> None:
         self.query_one("#body", RichLog).write(renderable)
+
+    def turn_rule(self, label: str, color: str) -> None:
+        """A left-aligned labeled separator between turns: ── label ───────.
+        Visually delimits user input, the agent's reply, and tool activity."""
+        self.body_write(Rule(Text(f" {label} ", style=f"bold {color}"), align="left", style=color))
 
     def register_subagent(self, sub) -> None:
         self.subagents.append(sub)
