@@ -356,7 +356,12 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
                     self.body_write(Text(f"→ {b.get('name', '')}({args})", style="bold cyan"))
 
     def body_write(self, renderable) -> None:
-        self.query_one("#body", RichLog).write(renderable)
+        log = self.query_one("#body", RichLog)
+        # Sticky tail: follow new output ONLY when already pinned to the bottom.
+        # With plain auto_scroll, every write yanked the view back down, so once
+        # you scrolled up to read or SELECT earlier output it jumped away — making
+        # the main area impossible to select while anything was being written.
+        log.write(renderable, scroll_end=log.is_vertical_scroll_end)
 
     def turn_rule(self, label: str, color: str) -> None:
         """A left-aligned labeled separator between turns (── label ──────).

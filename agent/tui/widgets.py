@@ -251,6 +251,10 @@ class SelectableRichLog(RichLog):
     """
 
     ALLOW_SELECT = True
+    # Don't steal focus when clicked to start a selection — the input stays
+    # focused so you can keep typing. Selection is screen-level (not focus-bound)
+    # and the mouse wheel still scrolls the widget under the pointer.
+    can_focus = False
 
     def get_selection(self, selection) -> tuple[str, str] | None:
         text = "\n".join(strip.text for strip in self.lines)
