@@ -53,13 +53,26 @@ async def _t() -> None:
         await pilot.pause(0.05)
         assert body.scroll_offset.y == 10, f"scrolled up must stay put, got {body.scroll_offset.y}"
 
-        # a selection survives writes that land while scrolled up
-        await pilot.mouse_down(body, offset=(4, 2))
-        await pilot.hover(body, offset=(30, 2))
+        # a selection survives writes that land while scrolled up, AND is actually
+        # painted (the real bug: stock RichLog.render_line never applied the
+        # selection style, so the highlight was invisible even though the state
+        # was correct). Drag across rows, then check the selection bg is rendered.
+        await pilot.mouse_down(body, offset=(4, 1))
+        await pilot.hover(body, offset=(20, 3))
         app.body_write("write during selection")
         await pilot.pause(0.05)
         assert body.scroll_offset.y == 10 and app.screen._selecting
-        await pilot.mouse_up(body, offset=(30, 2))
+        sel_bg = str(app.screen.get_component_rich_style("screen--selection").bgcolor)
+        painted = 0
+        for vy in range(body.size.height):
+            strip = body.render_line(vy)
+            painted += sum(
+                seg.cell_length
+                for seg in strip
+                if seg.style and seg.style.bgcolor and str(seg.style.bgcolor) == sel_bg
+            )
+        assert painted > 0, "selection highlight must be painted into the body strips"
+        await pilot.mouse_up(body, offset=(20, 3))
         # clicking the body to select keeps the input focused
         assert type(app.focused).__name__ == "PasteInput"
 

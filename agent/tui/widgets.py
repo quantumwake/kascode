@@ -244,10 +244,16 @@ class PasteInput(Input):
 class SelectableRichLog(RichLog):
     """RichLog with mouse text selection.
 
-    Textual's selection machinery needs the widget to map a Selection to
-    text; stock RichLog doesn't implement it. Its internal `lines` are the
-    rendered visual lines (Strips), which is exactly the coordinate space
-    selections are made in.
+    Stock RichLog supports neither extracting nor *painting* a selection. Two
+    overrides fix that:
+
+    - get_selection: map a Selection back to text. Its `lines` are the rendered
+      visual lines (Strips), which is the coordinate space selections live in.
+    - render_line: stock RichLog.render_line returns the raw strip and never
+      applies the selection style, so a highlight was invisible even though the
+      selection state was correct (you could "select" but saw nothing). We paint
+      the `screen--selection` component style over the selected span per line,
+      mirroring what the Log widget does.
     """
 
     ALLOW_SELECT = True
@@ -259,3 +265,38 @@ class SelectableRichLog(RichLog):
     def get_selection(self, selection) -> tuple[str, str] | None:
         text = "\n".join(strip.text for strip in self.lines)
         return selection.extract(text), "\n"
+
+    def render_line(self, y: int):
+        from textual.strip import Strip
+
+        scroll_x, scroll_y = self.scroll_offset
+        content_y = scroll_y + y
+        line = self._render_line(content_y, scroll_x, self.scrollable_content_region.width)
+        strip = line.apply_style(self.rich_style)
+        # Tag each cell with its CONTENT coordinate (stock RichLog doesn't), so a
+        # drag maps to the right lines — without this the selection latched onto
+        # the wrong content (e.g. the banner) regardless of where you dragged.
+        strip = strip.apply_offsets(scroll_x, content_y)
+        selection = self.text_selection
+        if selection is None:
+            return strip
+        span = selection.get_span(content_y)
+        if span is None:
+            return strip
+        start, end = span
+        width = strip.cell_length
+        # x-coords are content columns; the strip starts at scroll_x
+        start = min(max(0, start - scroll_x), width)
+        end = width if end == -1 else min(max(0, end - scroll_x), width)
+        if end <= start:
+            return strip
+        from rich.segment import Segment
+
+        sel_style = self.screen.get_component_rich_style("screen--selection")
+        selected = strip.crop(start, end)
+        # post_style overlays the selection ON TOP of each segment's own style, so
+        # it wins even over content that sets its own background (e.g. the banner).
+        selected = Strip(
+            Segment.apply_style(list(selected), post_style=sel_style), selected.cell_length
+        )
+        return Strip.join([strip.crop(0, start), selected, strip.crop(end, width)])
