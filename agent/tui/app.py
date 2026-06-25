@@ -29,40 +29,17 @@ from textual.widgets import Input, RichLog, Static
 
 from agent import main as core
 
-from .commands import CommandHandler
+from .commands import CommandHandler, command_completions
 from .fx import FxBar
 from .io import TuiIO
 from .loops import WorkerLoops
 from .stats import StatsPanel
 from .widgets import Composer, PasteInput, SelectableRichLog
 
-PLACEHOLDER = "task or steering · / for commands · exit"
-COMMANDS = [
-    "/yolo",
-    "/rag",
-    "/rag enable",
-    "/rag disable",
-    "/subagents",
-    "/status",
-    "/ctx",
-    "/ctx max",
-    "/ctx auto",
-    "/kv",
-    "/art",
-    "/sandbox",
-    "/stats",
-    "/fx",
-    "/theme",
-    "/compact",
-    "/self-skill",
-    "/ai-wellbeing",
-    "/ai-wellbeing chart",
-    "/spec",
-    "/stop",
-    "/pause",
-    "/model",
-    "exit",
-]
+PLACEHOLDER = "task or steering · / for commands (Tab completes, /help) · exit"
+# Inline ghost suggestions + Tab-complete candidates, generated from the command
+# registry (names + subcommands) so they never drift from the actual commands.
+COMMANDS = command_completions()
 
 
 class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
@@ -170,6 +147,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self.turns = 0
         self._alive = True
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
+        self._completions = COMMANDS  # Tab-complete candidates (see PasteInput)
         self.subagents: list = []  # SubagentIO registry (this session)
         # --- markdown UI (MDUI): GATED, default OFF (known-good plain rendering).
         # An earlier rich-output redesign corrupted the RichLog layout in real

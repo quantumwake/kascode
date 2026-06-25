@@ -5,6 +5,7 @@ from .base import Command
 
 class CompactCommand(Command):
     name = "/compact"
+    summary = "summarise the conversation to reclaim context"
 
     def run(self, app, arg: str) -> None:
         if app.busy:

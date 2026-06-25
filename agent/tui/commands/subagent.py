@@ -6,10 +6,15 @@ from .base import Command
 
 class SubagentCommand(Command):
     name = "/subagent"
+    summary = "watch a subagent's transcript (/subagents lists them)"
+    usage = "<n>"
 
     def match(self, text: str) -> str | None:
         # historical prefix: matches "/subagent", "/subagents", "/subagent 2"
         return text[len(self.name) :] if text.startswith(self.name) else None
+
+    def completions(self) -> list[str]:
+        return ["/subagents", "/subagent"]  # plural lists, singular drills in
 
     def run(self, app, arg: str) -> None:
         rest = arg.lstrip()

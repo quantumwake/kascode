@@ -5,6 +5,9 @@ from .base import Command
 
 class RagCommand(Command):
     name = "/rag"
+    summary = "local code / docs / memory retrieval"
+    usage = "[enable|disable]"
+    subcommands = (("enable", "turn recall on"), ("disable", "turn recall off"))
 
     def match(self, text: str) -> str | None:
         # historical: any "/rag..." prefix (so "/ragfoo" reaches the usage hint)

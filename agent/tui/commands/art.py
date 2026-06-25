@@ -5,6 +5,7 @@ from .base import Command
 
 class ArtCommand(Command):
     name = "/art"
+    summary = "toggle image generation (needs the 'art' extra)"
 
     def run(self, app, arg: str) -> None:
         app.runner.art = not app.runner.art

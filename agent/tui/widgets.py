@@ -197,6 +197,14 @@ class PasteInput(Input):
         super()._on_paste(event)
 
     def on_key(self, event) -> None:
+        # Tab autocompletes a /command (shell-style: extend to the shared prefix,
+        # then list the options). Handled here so it beats focus-navigation.
+        if event.key == "tab" and not getattr(self.app, "confirming", False):
+            if self.value.startswith("/"):
+                event.stop()
+                event.prevent_default()
+                self._tab_complete()
+            return
         # During a command-confirmation, a single y / n / a answers it (no Enter)
         # and is NOT typed into the field. Handled here (the focused widget) so it
         # beats the Input's own character insertion; otherwise keys are normal.
@@ -205,6 +213,32 @@ class PasteInput(Input):
             event.stop()
             event.prevent_default()
             self.app.action_confirm(ch)
+
+    def _tab_complete(self) -> None:
+        """Complete the current /command against the app's candidate list."""
+        import os
+
+        cur = self.value
+        cands = [c for c in getattr(self.app, "_completions", []) if c.startswith(cur)]
+        if not cands:
+            return
+        shared = os.path.commonprefix(cands)
+        if len(shared) > len(cur):
+            # extend to the shared prefix; trail a space if a subcommand follows
+            if any(c.startswith(shared + " ") for c in cands):
+                shared += " "
+            self.value = shared
+            self.cursor_position = len(self.value)
+        elif len(cands) > 1:
+            # at a branch point — show the options; and if the typed text is itself
+            # a complete command, trail a space so its argument can follow
+            self.app.body_write(Text("  " + "    ".join(cands), style="dim"))
+            if cur in cands and not cur.endswith(" "):
+                self.value = cur + " "
+                self.cursor_position = len(self.value)
+        elif any(c.startswith(cur + " ") for c in self.app._completions):
+            self.value = cur + " "  # single exact command that takes an argument
+            self.cursor_position = len(self.value)
 
 
 class SelectableRichLog(RichLog):

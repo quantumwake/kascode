@@ -8,6 +8,10 @@ line in REGISTRY — no edits to a central dispatcher.
 
 class Command:
     name: str = ""  # the primary "/name"
+    summary: str = ""  # one-line description for the /help menu
+    usage: str = ""  # arg hint shown after the name, e.g. "[enable|disable]"
+    # (subcommand, description) pairs — drive both the help menu and Tab-complete.
+    subcommands: tuple[tuple[str, str], ...] = ()
 
     def match(self, text: str) -> str | None:
         """Return the raw argument remainder (the text after `name`) if this
@@ -21,3 +25,8 @@ class Command:
         """Execute against the AgentApp `app`. `arg` is the raw remainder; the
         command normalises it (strip/lower) as needed."""
         raise NotImplementedError
+
+    def completions(self) -> list[str]:
+        """Tab-complete candidates this command contributes: its name and each
+        `/name <subcommand>`. Override to add aliases (e.g. /subagents)."""
+        return [self.name, *(f"{self.name} {sub}" for sub, _ in self.subcommands)]

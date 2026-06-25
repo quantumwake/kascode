@@ -6,6 +6,7 @@ from .base import Command
 
 class SpecCommand(Command):
     name = "/spec"
+    summary = "guided spec wizard → SPEC.md → autonomous build"
 
     def run(self, app, arg: str) -> None:
         if app.busy:

@@ -5,6 +5,7 @@ from .base import Command
 
 class StatsCommand(Command):
     name = "/stats"
+    summary = "toggle the live system / throughput panel"
 
     def run(self, app, arg: str) -> None:
         panel = app.query_one("#topstats")

@@ -5,6 +5,7 @@ from .base import Command
 
 class SandboxCommand(Command):
     name = "/sandbox"
+    summary = "explain sandbox status (gated; microVM extension)"
 
     def run(self, app, arg: str) -> None:
         # Sandboxing is disabled and gated: a file-tools-only jail let bash escape,

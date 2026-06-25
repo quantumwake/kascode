@@ -5,6 +5,12 @@ from .base import Command
 
 class CtxCommand(Command):
     name = "/ctx"
+    summary = "show or set the context-token budget"
+    usage = "[<n>|max|auto]"
+    subcommands = (
+        ("max", "cap context to the model's limit"),
+        ("auto", "auto-manage the token budget"),
+    )
 
     def run(self, app, arg: str) -> None:
         from agent.core.compaction import ctx_command

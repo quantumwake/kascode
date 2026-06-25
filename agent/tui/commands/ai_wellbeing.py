@@ -18,6 +18,11 @@ _CHART_WORDS = {"chart", "history", "trend", "graph", "log", "stats"}
 
 class AiWellbeingCommand(Command):
     name = "/ai-wellbeing"
+    summary = "reflective self-assessment; logs scores to a CSV"
+    subcommands = (
+        ("chart", "text sparklines of past assessments over time"),
+        ("chart here", "…restricted to this workdir"),
+    )
 
     def run(self, app, arg: str) -> None:
         parts = arg.strip().lower().split()

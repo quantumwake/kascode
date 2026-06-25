@@ -5,6 +5,7 @@ from .base import Command
 
 class StatusCommand(Command):
     name = "/status"
+    summary = "show model / yolo / rag / net / workdir / turns"
 
     def run(self, app, arg: str) -> None:
         app.body_write(

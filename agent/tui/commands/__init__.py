@@ -54,7 +54,17 @@ REGISTRY = [
 ]
 _HELP = HelpCommand()
 
-__all__ = ["CommandHandler", "REGISTRY"]
+__all__ = ["CommandHandler", "REGISTRY", "command_completions"]
+
+
+def command_completions() -> list[str]:
+    """Every Tab-complete candidate: each command's name + `/name <subcommand>`
+    (and any aliases), plus `exit`. Feeds both the inline suggester and Tab."""
+    out: list[str] = []
+    for cmd in REGISTRY:
+        out.extend(cmd.completions())
+    out.append("exit")
+    return out
 
 
 class CommandHandler:

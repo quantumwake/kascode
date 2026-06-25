@@ -6,6 +6,9 @@ from .base import Command
 
 class FxCommand(Command):
     name = "/fx"
+    summary = "toggle / pin the ambient fx bar"
+    usage = "[on|off|auto|<name>]"
+    subcommands = (("list", "show available effects"), ("auto", "react to agent state"))
 
     def run(self, app, arg: str) -> None:
         arg = arg.strip().lower()

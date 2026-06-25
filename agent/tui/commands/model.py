@@ -13,6 +13,8 @@ from .base import Command
 
 class ModelCommand(Command):
     name = "/model"
+    summary = "switch the served model (picker, or by id / number)"
+    usage = "[<id>|<n>]"
 
     def match(self, text: str) -> str | None:
         # historical prefix match (so "/model gemma" and "/model" both route here)

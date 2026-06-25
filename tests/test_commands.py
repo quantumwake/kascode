@@ -125,10 +125,11 @@ fire(app, "/status")
 assert any("yolo=" in w and "rag=" in w for w in app.writes)
 print("/status: OK")
 
-# 8. an unknown slash command prints the help line
+# 8. an unknown slash command prints the help menu (generated from the registry)
 app = FakeApp()
 fire(app, "/bogus")
-assert any("commands:" in w for w in app.writes)
+assert any("Tab to autocomplete" in w for w in app.writes)  # the menu header
+assert any("/spec" in w for w in app.writes)  # commands listed with summaries
 print("unknown command help: OK")
 
 # 9. a normal message while idle -> a real user turn (msg_q)

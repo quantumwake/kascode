@@ -5,6 +5,8 @@ from .base import Command
 
 class ThemeCommand(Command):
     name = "/theme"
+    summary = "reskin the whole UI (amber, matrix, ice, …)"
+    usage = "<name>"
 
     def run(self, app, arg: str) -> None:
         arg = arg.strip().lower()

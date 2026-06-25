@@ -5,6 +5,7 @@ from .base import Command
 
 class YoloCommand(Command):
     name = "/yolo"
+    summary = "toggle auto-approve — run commands without confirmation"
 
     def run(self, app, arg: str) -> None:
         app.runner.yolo = not app.runner.yolo
