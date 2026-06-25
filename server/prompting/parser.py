@@ -9,10 +9,20 @@ from .wire import Event, Schemas
 
 
 def _safe_len(buf: str, markers: tuple[str, ...]) -> int:
-    """Length of the prefix that cannot be part of a marker starting at the tail."""
+    """How many leading chars of `buf` are safe to emit as text right now.
+
+    A marker (e.g. "<|tool_call>") can arrive split across chunks, so the TAIL of
+    the buffer might be the start of one. We must hold that tail back until more
+    arrives. This returns the prefix length that CANNOT be the beginning of any
+    marker: for each marker, find the longest buffer-suffix that is also a prefix
+    of the marker (a potential partial match) and exclude it; the smallest such
+    cut across all markers is the safe boundary.
+    """
     n = len(buf)
     best = n
     for m in markers:
+        # Longest suffix of buf that could be the start of marker m: try the
+        # longest first and stop — that's the most we must hold back for this m.
         for k in range(min(len(m), n), 0, -1):
             if m.startswith(buf[n - k :]):
                 best = min(best, n - k)

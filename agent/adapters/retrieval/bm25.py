@@ -66,6 +66,9 @@ def _chunk_code(text: str) -> list[tuple[int, int, str]]:
     lines = text.split("\n")
     bounds = [0]
     for i, ln in enumerate(lines):
+        # Start a new chunk at each def/class, but only if ≥3 lines past the last
+        # boundary — so a run of tiny adjacent defs (overloads, dunders, stubs)
+        # stays in one chunk instead of fragmenting into many 1-2 line pieces.
         if DEF_RE.match(ln) and i - bounds[-1] >= 3:
             bounds.append(i)
     bounds.append(len(lines))
@@ -143,6 +146,9 @@ def _match_query(query: str) -> str:
     rare, meaningful terms dominate the ranking)."""
     tokens = re.findall(r"\w+", query.lower())
     content = [t for t in tokens if t not in _STOP and len(t) > 1]
+    # Prefer the rare/meaningful terms; but if the query is ALL stopwords (or
+    # single chars), fall back to the raw tokens so we still match something
+    # rather than returning an empty (match-nothing) query.
     return " OR ".join(content or tokens)
 
 

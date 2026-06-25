@@ -27,6 +27,7 @@ def _parse_value(s: str, i: int) -> tuple[Any, int]:
                 raise ValueError("unterminated object")
             if s[i] == "}":
                 return obj, i + 1
+            # Read the key: quoted (string syntax) or bare (up to the ':').
             if s.startswith(QUOTE, i):
                 j = s.find(QUOTE, i + len(QUOTE))
                 key = s[i + len(QUOTE) : j]
@@ -34,7 +35,9 @@ def _parse_value(s: str, i: int) -> tuple[Any, int]:
             else:
                 j = s.index(":", i)
                 key = s[i:j].strip()
-                i = j
+                i = j  # leave i ON the ':' so the next line handles both branches
+            # Skip the key:value ':'. For a quoted key that's the next colon;
+            # for a bare key i is already on it, so this re-locates the same one.
             i = s.index(":", i) + 1
             val, i = _parse_value(s, i)
             obj[key] = val

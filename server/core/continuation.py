@@ -41,10 +41,20 @@ def norm_blocks(content: Any) -> list[dict[str, Any]]:
 
 
 def echo_matches(echo_content: Any, blocks: list[dict[str, Any]]) -> bool:
-    """Does the client's echoed assistant turn match what we generated?"""
+    """Does the client's echoed assistant turn match what we generated last turn?
+
+    Continuation appends the new tool results to the RAW cached token stream
+    instead of re-rendering, which is only sound if the client sent back exactly
+    the assistant turn we produced (same blocks, same order). This verifies that
+    block-by-block before we trust the cache.
+    """
     echo = norm_blocks(echo_content)
     if len(echo) != len(blocks):
         return False
+    # Lengths match (checked above), so strict=False on zip is safe. Text and
+    # thinking are compared whitespace-insensitively: the client re-serialises
+    # the turn (e.g. trailing-newline differences) without changing its meaning,
+    # so leading/trailing whitespace must not break the match.
     for e, b in zip(echo, blocks, strict=False):
         if e.get("type") != b["type"]:
             return False
