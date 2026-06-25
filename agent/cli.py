@@ -129,7 +129,10 @@ def serve_main(argv: list[str]) -> None:
     """`kas serve` — run the inference server. Daemonizes by default."""
     import signal
 
+    from scripts.version import kas_version
+
     ap = argparse.ArgumentParser(prog="kas serve")
+    ap.add_argument("--version", action="version", version=f"kas {kas_version()}")
     ap.add_argument("--port", type=int, default=int(os.environ.get("KAS_PORT", "8765")))
     ap.add_argument("--model", default=None, help="model repo to load")
     ap.add_argument(
@@ -213,7 +216,10 @@ def serve_main(argv: list[str]) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     """The `kas` (agent) argument parser. Defaults read from config/env so the
     KAS_* envvars and the flags compose."""
+    from scripts.version import kas_version
+
     ap = argparse.ArgumentParser(prog="kas", description="kas — your local agent")
+    ap.add_argument("--version", action="version", version=f"kas {kas_version()}")
     ap.add_argument("--yolo", action="store_true", help="run bash commands without confirmation")
     ap.add_argument("--workdir", default=".", help="working directory for tools")
     ap.add_argument(

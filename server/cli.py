@@ -12,7 +12,10 @@ import os
 def main() -> None:
     import uvicorn
 
+    from scripts.version import kas_version
+
     ap = argparse.ArgumentParser(prog="kas-server", description="kas inference server")
+    ap.add_argument("--version", action="version", version=f"kas {kas_version()}")
     ap.add_argument("--port", type=int, default=int(os.environ.get("KAS_PORT", "8765")))
     ap.add_argument("--host", default=os.environ.get("KAS_HOST", "127.0.0.1"))
     ap.add_argument("--model", default=None, help="model repo to load")
