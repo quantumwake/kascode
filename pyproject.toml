@@ -71,4 +71,28 @@ testpaths = ["tests"]
 # doesn't import each script directly (which would execute it twice); the shim
 # runs each in-process so pytest-cov measures product coverage.
 python_files = ["test_scripts.py"]
-addopts = "-q"
+# Default coverage on every `pytest` run: branch coverage over the product code,
+# Cobertura XML (coverage.xml — the format Codecov/Coveralls/CI tools consume),
+# a terminal table, and a hard floor so coverage can't silently regress.
+addopts = """-q --cov=agent --cov=server --cov-branch \
+--cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=45"""
+
+[tool.coverage.run]
+source = ["agent", "server"]
+branch = true
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+precision = 1
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.",            # Protocol / ABC method stubs
+    "pragma: no cover",
+]
+
+[tool.coverage.xml]
+output = "coverage.xml"

@@ -81,10 +81,11 @@ fmt: ## auto-format + apply safe lint fixes
 typecheck: ## mypy (permissive baseline; ratchets to blocking per phase)
 	@uv run --extra dev mypy --config-file pyproject.toml agent/ server/ || true
 
-cov: ## pytest with coverage (product code under agent/ + server/)
-	@uv run --extra dev pytest --cov=agent --cov=server --cov-report=term-missing:skip-covered
+cov: ## pytest with coverage (config + thresholds in pyproject); writes coverage.xml + htmlcov/
+	@uv run --extra dev pytest
+	@echo "HTML report: htmlcov/index.html  ·  Cobertura: coverage.xml"
 
-check: lint test ## the CI gate locally: lint + the characterization suite
+check: lint cov ## the CI gate locally: lint + tests with the coverage floor
 
 download: ## download model weights (MODEL=...; XET=1 for xet backend)
 	@# Xet high-performance mode stalls and hides progress; standard HTTP gives
