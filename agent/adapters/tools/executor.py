@@ -1,21 +1,31 @@
 """ToolRunner — the ToolExecutor adapter: dispatches a tool call to its handler
-and coordinates per-turn workspace checkpointing. The heavy collaborators live
-in sibling modules (BashSession, PathResolver, Recaller, web fns, GitWorkspace);
-this class wires them and keeps the thin tool_* handlers the model calls.
+and coordinates per-turn workspace checkpointing.
+
+The collaborators it wires (BashSession, PathResolver, Recaller, web fns,
+GitWorkspace) live in sibling modules, and the tool_* handlers themselves are
+grouped into per-area mixins (_bash_tools / _file_tools / _image_tools). This
+class is the composition point: it owns the shared state in __init__, runs the
+dispatch, and keeps the few tiny handlers (recall/web/kv) that don't warrant a
+module of their own.
 """
 
 import pathlib
 from collections import deque
 
-from ...config import _truncate
 from ..workspace.git import GitWorkspace
+from ._bash_tools import BashToolsMixin
+from ._file_tools import FileToolsMixin
+from ._image_tools import ImageToolsMixin
 from .bash import BashSession
 from .files import PathResolver
 from .recall import Recaller
 from .web import web_fetch, web_search
 
 
-class ToolRunner:
+# The tool_* handlers come from the per-group mixins; run() finds each by name
+# across the MRO via getattr(self, "tool_<name>"), so adding a tool group is a
+# new mixin, not a change here.
+class ToolRunner(BashToolsMixin, FileToolsMixin, ImageToolsMixin):
     MUTATING_TOOLS = ("write_file", "edit_file", "bash", "bash_send_input", "generate_image")
 
     def __init__(
@@ -78,9 +88,6 @@ class ToolRunner:
 
     # -- dispatch -------------------------------------------------------------
 
-    def _resolve(self, path: str) -> pathlib.Path:
-        return self._paths.resolve(path)
-
     def run(self, name: str, args: dict) -> tuple[str, bool]:
         """Returns (output, is_error)."""
         try:
@@ -100,139 +107,6 @@ class ToolRunner:
             return output, is_error
         except Exception as exc:  # surface errors to the model, don't crash
             return f"{type(exc).__name__}: {exc}", True
-
-    # -- bash -----------------------------------------------------------------
-
-    def _session_report(self) -> tuple[str, bool]:
-        assert self.session is not None
-        sess = self.session
-        out, status = sess.read_until_idle()
-        if status == "exited":
-            code = sess.proc.returncode
-            sess.close()
-            self.session = None
-            if code:
-                out += f"\n[exit code {code}]"
-            return _truncate(out.strip() or "(no output)"), bool(code)
-
-        # Still running. Track consecutive *silent* waits so we can escalate the
-        # guidance — and eventually stop the model from looping on bash_wait.
-        if out.strip():
-            sess.idle_waits = 0  # made progress this read
-        elif status == "waiting":
-            sess.idle_waits += 1
-        waits = sess.idle_waits
-
-        if status == "timeout":  # busy: still producing output after 120s
-            note = (
-                "still producing output after 120s. bash_wait to keep waiting, "
-                "or bash_kill to stop it."
-            )
-        elif waits >= 3:
-            # Break the livelock: leave it running (PTY child is its own session)
-            # and free the shell so the agent can do something useful.
-            cmd = sess.command
-            self.session = None
-            return (
-                _truncate(out)
-                + f"\n[no output across {waits} waits — left `{cmd}` running in the background "
-                "and freed the shell. If it's a server it's ready: use it (curl/open it) or run "
-                "other commands; if it's stuck, find and kill its PID. Do NOT bash_wait it again.]",
-                False,
-            )
-        elif waits >= 2:
-            note = (
-                f"silent for {waits} waits — almost certainly a ready long-running process "
-                "(dev server/watcher) or stuck, NOT waiting for input. Stop calling bash_wait: "
-                "move on and use it, or bash_kill it."
-            )
-        else:
-            note = (
-                "no output for a while — it may be waiting for input. Answer with "
-                "bash_send_input, keep waiting with bash_wait, or stop with bash_kill."
-            )
-        return _truncate(out) + f"\n[process still running: {note}]", False
-
-    def tool_bash(self, command: str) -> tuple[str, bool]:
-        if self.session is not None and self.session.alive():
-            return (
-                f"a previous command is still running (`{self.session.command}`). "
-                "Interact with it via bash_send_input / bash_wait, or stop it with "
-                "bash_kill before starting a new one.",
-                True,
-            )
-        if not self.yolo:
-            answer = self.io.confirm(command)
-            if answer is None:
-                return (
-                    "cannot ask the user for confirmation (stdin is not a TTY) — "
-                    "re-run the agent with --yolo to auto-approve commands",
-                    True,
-                )
-            if answer in ("a", "always"):
-                self.yolo = True
-                self.io.notice("yolo enabled for this session (/yolo to turn off)")
-            elif answer not in ("y", "yes"):
-                return "user declined to run this command", True
-        self.session = BashSession(command, self.workdir)
-        return self._session_report()
-
-    def tool_bash_send_input(self, text: str) -> tuple[str, bool]:
-        if self.session is None or not self.session.alive():
-            return "no command is currently running", True
-        self.session.send(text)
-        return self._session_report()
-
-    def tool_bash_wait(self) -> tuple[str, bool]:
-        if self.session is None or not self.session.alive():
-            return "no command is currently running", True
-        return self._session_report()
-
-    def tool_bash_kill(self) -> tuple[str, bool]:
-        if self.session is None:
-            return "no command is currently running", True
-        self.session.kill()
-        self.session = None
-        return "process terminated", False
-
-    # -- files ----------------------------------------------------------------
-
-    def tool_read_file(
-        self, path: str, start_line: int | None = None, end_line: int | None = None
-    ) -> tuple[str, bool]:
-        text = self._resolve(path).read_text()
-        if start_line is None and end_line is None:
-            return _truncate(text), False
-        lines = text.splitlines()
-        lo = max(1, start_line or 1)
-        hi = min(len(lines), end_line or len(lines))
-        if lo > len(lines):
-            return f"start_line {lo} is past end of file ({len(lines)} lines)", True
-        body = "\n".join(f"{i:>5}: {lines[i - 1]}" for i in range(lo, hi + 1))
-        return _truncate(f"[lines {lo}-{hi} of {len(lines)}]\n{body}"), False
-
-    def tool_write_file(self, path: str, content: str, append: bool = False) -> tuple[str, bool]:
-        p = self._resolve(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "a" if append else "w") as f:
-            f.write(content)
-        verb = "appended" if append else "wrote"
-        return f"{verb} {len(content)} chars to {p}", False
-
-    def tool_edit_file(self, path: str, old_string: str, new_string: str) -> tuple[str, bool]:
-        p = self._resolve(path)
-        text = p.read_text()
-        count = text.count(old_string)
-        if count == 0:
-            return "old_string not found in file", True
-        if count > 1:
-            return f"old_string appears {count} times; it must be unique", True
-        p.write_text(text.replace(old_string, new_string, 1))
-        return f"edited {p}", False
-
-    def tool_list_dir(self, path: str = ".") -> tuple[str, bool]:
-        entries = sorted(self._resolve(path).iterdir())
-        return "\n".join(e.name + ("/" if e.is_dir() else "") for e in entries) or "(empty)", False
 
     # -- opt-in tools ---------------------------------------------------------
 
@@ -266,64 +140,3 @@ class ToolRunner:
             f"KV-resume {'ON' if self.persist_kv else 'OFF'} "
             f"(server must also have KAS_KV_PERSIST!=0) · {n} delta file(s) on disk"
         )
-
-    def _art_executor(self):
-        if self._art_pool is None:
-            from concurrent.futures import ThreadPoolExecutor
-
-            # cap concurrent renders — each is a separate GPU-using mflux process
-            self._art_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="art")
-        return self._art_pool
-
-    def tool_generate_image(
-        self,
-        prompt: str,
-        path: str | None = None,
-        seed: int | None = None,
-        steps: int | None = None,
-    ) -> tuple[str, bool]:
-        """ASYNC: kick off the render in the background and return immediately so
-        the agent keeps working. The PNG appears at the returned path when done;
-        poll with image_status."""
-        from .image import render, resolve_out
-
-        if not prompt or not prompt.strip():
-            return "generate_image requires a non-empty 'prompt'", True
-        out = resolve_out(self.workdir, prompt, path)
-        self._art_seq += 1
-        tid = self._art_seq
-        self._art_tasks[tid] = {"status": "running", "prompt": prompt[:80], "path": str(out)}
-
-        def work() -> None:
-            output, err = render(prompt, out, seed=seed, steps=steps)
-            self._art_tasks[tid].update(status="error" if err else "done", detail=output)
-
-        self._art_executor().submit(work)
-        return (
-            f"image task #{tid} started in the background → {out}\n"
-            "It renders while you keep working — reference that path now. Check progress with "
-            f"image_status (task_id {tid}), or image_status() to list all tasks.",
-            False,
-        )
-
-    def tool_image_status(self, task_id: int | None = None) -> tuple[str, bool]:
-        if not self._art_tasks:
-            return "no image tasks this session", False
-        mark = {"running": "⏳", "done": "✓", "error": "✗"}
-
-        def fmt(i: int, t: dict) -> str:
-            line = f"#{i} {mark.get(t['status'], '?')} {t['status']}  {t['path']}"
-            if t["status"] != "running" and t.get("detail"):
-                line += f"\n    {t['detail'][:300]}"
-            return line
-
-        if task_id is not None:
-            try:
-                tid = int(task_id)
-            except (TypeError, ValueError):
-                return f"bad task_id {task_id!r}", True
-            t = self._art_tasks.get(tid)
-            if t is None:
-                return f"no image task #{tid}", True
-            return fmt(tid, t), t["status"] == "error"
-        return "\n".join(fmt(i, t) for i, t in sorted(self._art_tasks.items())), False
