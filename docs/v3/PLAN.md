@@ -32,7 +32,23 @@
 | 3 | Decompose `tui.py` | 1,538L → `agent/tui/` package, no file >400L | Medium | 2 | ✅ done |
 | 4 | Split god-functions | `agent_turn`, `on_input_submitted`, `generate`, `cli.main`, `pipeline.run` | High | 2 | ✅ done |
 | 5 | Ports hygiene | Formal `AgentIO` conformance; ports for `SessionStore`, `Workspace` | Medium | 4 | ✅ done |
-| 6 | Adapter cleanup | Thin `ToolRunner`; decompose `engine.py` | Medium | 5 | ⬜ next |
+| 6 | Adapter cleanup | Thin `ToolRunner`; decompose `engine.py` | Medium | 5 | ✅ done |
+
+**Phase 6** — ToolRunner split into per-group tool mixins (329L → 135L + bash/
+file/image mixins; `test_tools` guards it). `engine.py` deliberately NOT split:
+its load/cache/generate/persist all run on one worker thread and share
+runtime-bound mlx_lm attrs + slot state, so splitting would scatter coupled code
+for no gain (documented in the module). Instead, a bigger win landed:
+
+> **Pluggable backends (beyond the plan).** Per the user's directive, the engine
+> is no longer MLX-only. `EngineLike` (now the full backend contract) is the seam;
+> `server/backends/` holds a registry + `make_engine()` factory that selects by
+> `KAS_BACKEND` / model-id / **OS+arch**, checking platform BEFORE importing a
+> backend (MLX needs Apple Silicon → clear error elsewhere, not an ImportError).
+> MLX moved to `server/backends/mlx.py`; `GenChunk` is backend-neutral in
+> core.ports; `mlx-lm`/`mflux` carry platform markers so non-Apple installs pull
+> no Apple packages. `test_backends.py` covers the routing; the core-isolation
+> guard now forbids `core → backends` too.
 
 **Phase 5** — `ce0d9f8`: `ToolExecutor` made `@runtime_checkable`; added
 `SessionStorePort` + `WorkspacePort`; `test_ports.py` asserts every adapter
