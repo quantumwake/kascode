@@ -8,6 +8,7 @@ Three panels:
                  boundary), answers confirmations (y / N / a=always)
 """
 
+import json
 import queue
 import threading
 
@@ -299,10 +300,12 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
             self.turns = len(self.messages)
             self.body_write(
                 Text(
-                    f"resumed session {self.store.id} ({len(self.messages)} messages)",
+                    f"resumed session {self.store.id} ({len(self.messages)} messages):",
                     style="green",
                 )
             )
+            self._replay_transcript()  # re-render the full history into the work view
+            self.body_write(Text("— end of restored history —\n", style="dim"))
         threading.Thread(target=self._agent_loop, daemon=True).start()
         # auto-continue a session that was mid-task / paused when saved
         if self.messages and core.SessionStore.should_continue(
@@ -319,6 +322,35 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
             self.runner.session.kill()
 
     # ---- UI-thread helpers ----
+
+    def _replay_transcript(self) -> None:
+        """Re-render the restored conversation into the work view on --resume, so
+        the user sees the full prior text (not a blank panel). Mirrors the live
+        plain rendering; restored blocks are JSON dicts. Best-effort per block."""
+        for m in self.messages:
+            role = m.get("role")
+            content = m.get("content")
+            blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
+            for b in blocks:
+                if not isinstance(b, dict):
+                    continue
+                btype = b.get("type")
+                if role == "user" and btype == "tool_result":
+                    out = b.get("content", "")
+                    if isinstance(out, list):  # content may itself be a list of blocks
+                        out = "".join(x.get("text", "") for x in out if isinstance(x, dict))
+                    err = bool(b.get("is_error"))
+                    mark, style = ("✗", "red") if err else ("✓", "green")
+                    self.body_write(Text(f"  {mark} {str(out)[:300]}", style=style))
+                elif role == "user" and btype == "text":
+                    self.body_write(Text(f"\nyou> {b.get('text', '')}", style="bold"))
+                elif role == "assistant" and btype == "thinking":
+                    self.body_write(Text(b.get("thinking", ""), style="dim italic"))
+                elif role == "assistant" and btype == "text":
+                    self.body_write(Text(b.get("text", "")))
+                elif role == "assistant" and btype == "tool_use":
+                    args = json.dumps(b.get("input", {}), ensure_ascii=False)[:200]
+                    self.body_write(Text(f"→ {b.get('name', '')}({args})", style="bold cyan"))
 
     def body_write(self, renderable) -> None:
         self.query_one("#body", RichLog).write(renderable)
