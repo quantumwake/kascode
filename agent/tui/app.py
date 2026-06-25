@@ -60,6 +60,16 @@ COMMANDS = [
 
 
 class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
+    """The TUI composition root. It owns the shared state (set in __init__) and
+    the widget tree (compose/on_mount), and inherits its behaviour from three
+    mixins so this file stays small: CommandHandler (on_input_submitted +
+    /command handlers), StatsPanel (the /stats line + status bar), and
+    WorkerLoops (the agent + status worker threads). The mixins reference `self.*`
+    state defined here; method lookup resolves across the MRO above. The agent
+    thread talks back to this UI through TuiIO (the AgentIO port) via
+    call_from_thread — never by touching widgets directly off-thread.
+    """
+
     # Chrome colours come from the active Textual theme (see SCREEN_THEMES /
     # on_mount), so `/theme` reskins the WHOLE screen, not just the fx bar.
     CSS = """

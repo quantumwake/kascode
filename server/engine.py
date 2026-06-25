@@ -1,4 +1,4 @@
-"""MLX model wrapper: all MLX work runs on one dedicated thread.
+"""MLX model wrapper (the EngineLike adapter): all MLX work runs on one thread.
 
 MLX GPU streams are bound to the thread that creates them, and FastAPI serves
 sync endpoints from a thread pool — so generation must never run on whichever
@@ -6,6 +6,17 @@ pool thread happens to handle the request ("There is no Stream(gpu, 1) in
 current thread"). A single worker thread performs the mlx_lm import, the model
 load, and every generation. This also serializes requests, which MLX requires
 anyway.
+
+Why this is one cohesive module (and not split like the agent's tui/ package):
+every operation here — load, slot/KV-cache management, generation, and on-disk KV
+persistence — runs on that one worker thread and shares state that only exists
+there: the mlx_lm functions bound as instance attrs in _worker (self._mx,
+self._KVCache, self._make_prompt_cache, self._stream_generate, …) and the
+per-thread cache slots (self._slots). The pieces are read together and mutate the
+same thread-local state, so keeping them in one file aids reasoning rather than
+hurting it; splitting would scatter intimately-coupled code across files for no
+gain. Public surface = the EngineLike protocol (tokenize/encode/generate/swap/
+cache_snapshot/rehydrate + stats); everything prefixed `_` is worker-internal.
 """
 
 import logging
