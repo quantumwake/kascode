@@ -2,9 +2,10 @@
 the workspace. Adapter: ToolRunner.
 """
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
+@runtime_checkable
 class ToolExecutor(Protocol):
     # opt-in capabilities the loop reads to decide which tool schemas to send
     net: bool

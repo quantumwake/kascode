@@ -66,6 +66,8 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_commands.py
 	@uv run python tests/test_server_start.py
 	@uv run python tests/test_tui_smoke.py
+	@uv run python tests/test_ports.py
+	@uv run python tests/test_architecture.py
 
 test-gpu: ## live engine test against a running server (start one first: make start)
 	@uv run python tests/test_engine_live.py
