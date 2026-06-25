@@ -39,6 +39,47 @@ assert text.count("proj-x") == 2, "two rows appended"
 assert "test-model" in text and "going well" in text
 print("append_csv: OK")
 
+# --- read_history + chart_lines (text sparklines over time) -----------------
+assert aw.read_history(pathlib.Path(tempfile.mkdtemp()) / "nope.csv") == []  # no file
+hist = aw.read_history(tmp)
+assert len(hist) == 2 and hist[0]["model"] == "test-model"
+assert hist[0]["cognitive_load"] == 0.7 and hist[0]["context_pressure"] == 1.0
+assert hist[0]["workdir"] == "proj-x" and hist[0]["note"] == "going well"
+
+assert aw.chart_lines([]) == []  # nothing to chart
+lines = aw.chart_lines(hist)
+text_blob = "\n".join(line for line, _ in lines)
+assert "ai-wellbeing · 2 assessments" in lines[0][0]
+assert any("cognitive load" in line for line, _ in lines)
+assert any(c in text_blob for c in aw._SPARK), "sparkline glyphs present"
+# polarity colouring: high burden (cognitive_load 0.70) is red; high-is-good
+# clarity (0.90) is green
+styles = {line.split("  ")[1].strip(): style for line, style in lines if line.startswith("  ")}
+assert styles.get("cognitive load") == "red", styles
+assert styles.get("clarity") == "green", styles
+assert lines[-1] == ("  note: going well", "dim")
+# a row with blank/missing dims -> that dim is skipped, others still chart
+sparse = [
+    {
+        "time": "2026-06-25T00:00:00",
+        "workdir": "w",
+        "model": "m",
+        "note": "",
+        "cognitive_load": None,
+        "stress": 0.4,
+        "clarity": None,
+        "confidence": None,
+        "frustration": None,
+        "engagement": None,
+        "autonomy": None,
+        "context_pressure": None,
+    }
+]
+sl = aw.chart_lines(sparse)
+assert any("stress" in line for line, _ in sl)
+assert not any("cognitive load" in line for line, _ in sl)
+print("read_history + chart_lines: OK")
+
 
 # --- assess_wellbeing end-to-end (fake streaming client) -------------------
 class _Delta:

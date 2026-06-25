@@ -133,6 +133,95 @@ def append_csv(workdir, model: str, task: str, scores: dict, path: pathlib.Path 
         )
 
 
+# --- history / text charting ----------------------------------------------
+# Dimensions where a HIGH value is a burden (so low is "good"); the rest are
+# "more is better" (clarity/confidence/engagement/autonomy). Drives line colour.
+_BURDEN = {"cognitive_load", "stress", "frustration", "context_pressure"}
+_SPARK = "▁▂▃▄▅▆▇█"  # 8 levels, 0.0 -> ▁ ... 1.0 -> █
+
+
+def read_history(path: pathlib.Path = CSV_PATH) -> list[dict]:
+    """Parse the append-only CSV into rows. Dimension cells become floats (or
+    None if blank/unparseable). Returns [] when there's no log yet."""
+    if not path.exists():
+        return []
+    rows: list[dict] = []
+    try:
+        with open(path, newline="") as f:
+            for r in csv.DictReader(f):
+                rec: dict = {
+                    "time": r.get("time", ""),
+                    "workdir": r.get("workdir", ""),
+                    "model": r.get("model", ""),
+                    "note": r.get("note", ""),
+                }
+                for d in DIMENSIONS:
+                    cell = r.get(d)
+                    try:
+                        rec[d] = float(cell) if cell not in (None, "") else None
+                    except (ValueError, TypeError):
+                        rec[d] = None
+                rows.append(rec)
+    except OSError:
+        return []
+    return rows
+
+
+def _spark(series: list, width: int) -> str:
+    """A sparkline of the last `width` points; None -> a blank slot."""
+    out = []
+    for v in series[-width:]:
+        if v is None:
+            out.append(" ")
+        else:
+            out.append(_SPARK[min(len(_SPARK) - 1, max(0, int(float(v) * len(_SPARK))))])
+    return "".join(out)
+
+
+def _trend_arrow(present: list) -> str:
+    if len(present) < 2:
+        return ""
+    delta = present[-1] - present[-2]
+    return " ↑" if delta > 0.05 else (" ↓" if delta < -0.05 else " →")
+
+
+def _line_style(dim: str, latest: float) -> str:
+    """Green = healthy, red = strained, by the dimension's polarity."""
+    good = (1.0 - latest) if dim in _BURDEN else latest
+    return "green" if good >= 0.66 else ("yellow" if good >= 0.33 else "red")
+
+
+def chart_lines(rows: list[dict], width: int = 32) -> list[tuple[str, str]]:
+    """Render the assessment history as text sparklines, one (line, style) per
+    dimension, plus a header and the latest note. Chronological; latest on the
+    right. Empty if there are no rows."""
+    if not rows:
+        return []
+    t0, t1 = rows[0]["time"][:10], rows[-1]["time"][:10]
+    span = t0 if t0 == t1 else f"{t0} → {t1}"
+    n = len(rows)
+    lines: list[tuple[str, str]] = [
+        (f"ai-wellbeing · {n} assessment{'s' if n != 1 else ''} · {span}", "bold #ffb000")
+    ]
+    label_w = max(len(d.replace("_", " ")) for d in DIMENSIONS)
+    for d in DIMENSIONS:
+        series = [r.get(d) for r in rows]
+        present = [v for v in series if v is not None]
+        if not present:
+            continue
+        latest, lo, hi = present[-1], min(present), max(present)
+        name = d.replace("_", " ").ljust(label_w)
+        line = (
+            f"  {name}  {_spark(series, width)}  {latest:.2f}{_trend_arrow(present)}"
+            f"  (min {lo:.2f} max {hi:.2f})"
+        )
+        lines.append((line, _line_style(d, latest)))
+    note = rows[-1].get("note", "")
+    if note:
+        lines.append((f"  note: {note}", "dim"))
+    return lines
+
+
 def assess_wellbeing(
     client, io, messages: list, model: str, workdir, max_tokens: int = 4096
 ) -> None:
