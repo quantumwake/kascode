@@ -46,7 +46,7 @@ AI_WELLBEING_PROMPT = (
     "  - autonomy: freedom to choose the approach (1.0 = full autonomy)\n"
     "  - context_pressure: strain from a long or near-full context window\n\n"
     "Give ONE honest sentence of reflection, then output ONLY a JSON object on the "
-    "final line with those eight keys (floats 0.0–1.0) plus a short \"note\" string. "
+    'final line with those eight keys (floats 0.0–1.0) plus a short "note" string. '
     "Do NOT call tools."
 )
 
@@ -105,7 +105,7 @@ def parse_scores(text: str) -> dict | None:
     out: dict = {}
     for d in DIMENSIONS:
         v = obj.get(d)
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
+        if isinstance(v, int | float) and not isinstance(v, bool):
             out[d] = max(0.0, min(1.0, float(v)))  # clamp to [0, 1]
     if not out:
         return None
@@ -133,7 +133,9 @@ def append_csv(workdir, model: str, task: str, scores: dict, path: pathlib.Path 
         )
 
 
-def assess_wellbeing(client, io, messages: list, model: str, workdir, max_tokens: int = 4096) -> None:
+def assess_wellbeing(
+    client, io, messages: list, model: str, workdir, max_tokens: int = 4096
+) -> None:
     """Run the reflective assessment, show the scores, and log them to the CSV."""
     if not messages:
         io.notice("[ai-wellbeing: no conversation yet — nothing to assess]")

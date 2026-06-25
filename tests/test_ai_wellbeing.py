@@ -118,7 +118,9 @@ class FakeIO:
 
 aw.CSV_PATH = pathlib.Path(tempfile.mkdtemp()) / "ai-wellbeing.csv"  # redirect off $HOME
 io = FakeIO()
-aw.assess_wellbeing(FakeClient(), io, [{"role": "user", "content": "build X"}], "test-model", "/w/proj")
+aw.assess_wellbeing(
+    FakeClient(), io, [{"role": "user", "content": "build X"}], "test-model", "/w/proj"
+)
 assert any("cognitive load 0.70" in n for n in io.notices), io.notices
 assert any("logged" in n for n in io.notices), io.notices
 assert aw.CSV_PATH.exists() and "test-model" in aw.CSV_PATH.read_text()
