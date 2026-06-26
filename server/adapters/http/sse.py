@@ -23,6 +23,7 @@ def stream(
     memos: dict[str, dict],
     thread: str = "main",
     persist_dir: str | None = None,
+    viz: bool = False,
 ) -> Iterator[str]:
     msg_id = "msg_" + uuid.uuid4().hex[:24]
     index = 0
@@ -53,7 +54,7 @@ def stream(
             index += 1
 
     stop_reason, usage = "end_turn", {"input_tokens": 0, "output_tokens": 0}
-    for ev in run(req, engine, memos, thread, persist_dir):
+    for ev in run(req, engine, memos, thread, persist_dir, viz):
         if ev["kind"] == "ping":
             # Anthropic's ping event is normally bare; we attach live progress
             # under "_stats" (ignored by the SDK, read by our TUI status line).
@@ -85,6 +86,8 @@ def stream(
                 if ev["kind"] == "text"
                 else {"type": "thinking_delta", "thinking": ev["text"]}
             )
+            if ev.get("viz") is not None:  # /viz: per-token logprobs (SDK keeps model_extra)
+                delta["_viz"] = ev["viz"]
             yield sse(
                 "content_block_delta",
                 {"type": "content_block_delta", "index": index, "delta": delta},
@@ -139,12 +142,13 @@ def stream_safe(
     memos: dict[str, dict],
     thread: str = "main",
     persist_dir: str | None = None,
+    viz: bool = False,
 ) -> Iterator[str]:
     """Wrap stream so server-side failures become an SSE error event the SDK
     can raise cleanly, instead of an aborted chunked response
     (httpx: 'peer closed connection without sending complete message body')."""
     try:
-        yield from stream(req, engine, memos, thread, persist_dir)
+        yield from stream(req, engine, memos, thread, persist_dir, viz)
     except Exception as exc:
         log.exception("error during streaming generation")
         yield sse(

@@ -73,6 +73,7 @@ class WorkerLoops:
                     model=self.model,
                     max_tokens=self.max_tokens,
                     store=self.store,
+                    viz=self.viz.header(),
                 )
                 # steering submitted after the final response starts a new turn
                 leftovers = self.io.drain_steers()

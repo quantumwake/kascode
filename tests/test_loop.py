@@ -149,7 +149,7 @@ class FakeIO:
     def should_pause(self) -> bool:
         return self._pause
 
-    def delta(self, kind: str, text: str):
+    def delta(self, kind: str, text: str, viz=None):
         self.deltas.append((kind, text))
 
     def drain_steers(self) -> list:

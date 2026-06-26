@@ -151,7 +151,10 @@ def _stream_response(
                 elif event.delta.type == "text_delta":
                     kind, field, piece = "text", "text", event.delta.text
                 if kind is not None:
-                    io.delta(kind, piece)
+                    # /viz: the server smuggles per-token logprobs on the delta;
+                    # the SDK keeps unknown fields in model_extra.
+                    viz = (getattr(event.delta, "model_extra", None) or {}).get("_viz")
+                    io.delta(kind, piece, viz)
                     if partial and partial[-1]["type"] == kind:
                         partial[-1][field] += piece
                     else:
@@ -206,6 +209,7 @@ def agent_turn(
     is_subagent: bool = False,
     max_rounds: int | None = None,
     thread: str | None = None,
+    viz: str = "",
 ) -> None:
     """One user turn: loop until the model stops calling tools.
 
@@ -230,6 +234,8 @@ def agent_turn(
     # Tell the server which session dir to persist/rehydrate this thread's KV
     # cache under (server only acts on it when KV persistence is enabled).
     headers = {"x-agent-thread": thread}
+    if viz:  # /viz overlays on -> ask the server for per-token logprobs
+        headers["x-agent-viz"] = viz
     if (
         store is not None
         and getattr(store, "dir", None) is not None

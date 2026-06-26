@@ -141,6 +141,35 @@ class LlamaCppEngine:
 
     # --- generation ----------------------------------------------------------
 
+    def _token_viz(self, tok: int) -> dict | None:
+        """Per-token logprob summary for /viz from llama.cpp's last-step logits.
+        Best-effort (numpy over the vocab); any failure -> None so generation is
+        never affected. Same shape as the MLX backend, so the client is backend-
+        agnostic."""
+        try:
+            import numpy as np
+
+            scores = getattr(self._llm, "scores", None)
+            if scores is None:
+                scores = getattr(self._llm, "_scores", None)
+            row = max(0, int(getattr(self._llm, "n_tokens", 1)) - 1)
+            logits = np.asarray(scores[row], dtype="float64")
+            if logits.ndim != 1 or logits.size == 0:
+                return None
+            p = np.exp(logits - logits.max())
+            p /= p.sum()
+            conf = float(p[tok])
+            entropy = float(-(p * np.log(p + 1e-12)).sum())
+            idx = np.argpartition(-p, 5)[:5]
+            idx = idx[np.argsort(-p[idx])]
+            top = [
+                [self._llm.detokenize([int(i)]).decode("utf-8", "replace"), float(p[int(i)])]
+                for i in idx
+            ]
+            return {"conf": conf, "entropy": entropy, "top": top}
+        except Exception:
+            return None
+
     def generate(
         self,
         prompt_tokens: list[int],
@@ -150,6 +179,7 @@ class LlamaCppEngine:
         stop_sequences: list[str],
         cache_key: str = "main",
         persist_dir: str | None = None,
+        viz: bool = False,
     ) -> Iterator[GenChunk]:
         with self._lock:
             self._cancel.clear()
@@ -179,12 +209,13 @@ class LlamaCppEngine:
                 gen_ids.append(tok)
                 whole = self._llm.detokenize(gen_ids).decode("utf-8", "replace")
                 delta, text = whole[len(text) :], whole
+                tok_viz = self._token_viz(tok) if viz else None
                 hit = next((s for s in stop_sequences if s and s in text), None)
                 if hit:
                     cut = text.index(hit)
                     tail = text[len(text) - len(delta) : cut]
                     if tail:
-                        yield GenChunk(text=tail)
+                        yield GenChunk(text=tail, viz=tok_viz)
                     finish = "stop_sequence"
                     break
                 elapsed = max(1e-3, time.time() - t0)
@@ -196,7 +227,7 @@ class LlamaCppEngine:
                     "total": max_tokens,
                 }
                 if delta:
-                    yield GenChunk(text=delta)
+                    yield GenChunk(text=delta, viz=tok_viz)
                 if len(gen_ids) >= max_tokens:
                     finish = "length"
                     break

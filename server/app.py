@@ -177,6 +177,9 @@ def messages(req: MessagesRequest, request: Request):
     # log thread=main they're sharing a KV slot + continuation memo (e.g. an agent
     # process running pre-fix code) — restart the agents.
     log.info("turn model=%s thread=%s stream=%s", req.model, thread, req.stream)
+    # /viz: when the client asks (any overlay on), the engine emits per-token
+    # logprobs. Only then — the top-k+entropy compute isn't free.
+    viz = bool(request.headers.get("x-agent-viz"))
 
     # Warm KV-resume: if persistence is on and the agent told us its session
     # dir, rehydrate this thread's KV cache + continuation memo from disk before
@@ -196,7 +199,7 @@ def messages(req: MessagesRequest, request: Request):
 
     if req.stream:
         return StreamingResponse(
-            stream_safe(req, engine, _memos, thread, persist_dir),
+            stream_safe(req, engine, _memos, thread, persist_dir, viz),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )

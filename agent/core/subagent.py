@@ -46,7 +46,7 @@ class SubagentIO:
         self._flush()
         self.parent.stream_finished(usage)
 
-    def delta(self, kind: str, text: str):
+    def delta(self, kind: str, text: str, viz=None):
         self._cap(text)  # full detail → buffer only (keeps the main view clean)
 
     def tool_call(self, name: str, args: dict):

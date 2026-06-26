@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 from rich.markdown import Markdown
 from rich.text import Text
 
+from .viz import confidence_color, topk_lines
+
 if TYPE_CHECKING:
     from .app import AgentApp
 
@@ -30,6 +32,7 @@ class TuiIO:
         self.pause = threading.Event()
         self.last_decode_tps: float = 0.0
         self._line = ""  # plain-mode line buffer (default)
+        self._hline: Text | None = None  # /viz heatmap: per-token coloured line
         self._kind = "text"
         self._think = ""  # MDUI: in-flight thinking line
         self._answer = ""  # MDUI: accumulated answer text -> Markdown at block end
@@ -52,6 +55,41 @@ class TuiIO:
         if self._line:
             self._write(self._line, "dim italic" if self._kind == "thinking" else "")
             self._line = ""
+        if self._hline is not None and len(self._hline):
+            self._ui(self.app.body_write, self._hline)
+        self._hline = None
+
+    def _heat(self, text: str, conf: float | None) -> None:
+        """/viz heatmap: append a text token to the current line coloured by its
+        confidence, flushing the coloured line on each newline."""
+        if self._kind != "text":
+            self._flush_line()
+            self._kind = "text"
+        style = confidence_color(conf) if conf is not None else ""
+        if self._hline is None:
+            self._hline = Text()
+        parts = text.split("\n")
+        for i, part in enumerate(parts):
+            if part:
+                self._hline.append(part, style=style)
+            if i < len(parts) - 1:  # newline boundary -> flush this coloured line
+                self._ui(self.app.body_write, self._hline)
+                self._hline = Text()
+
+    def _viz_overlays(self, kind: str, viz: dict) -> None:
+        """Drive the top-k 'deliberation' panel (latest token's alternatives +
+        entropy) — updated in place, not scrolled into the work view."""
+        vm = self.app.viz
+        if not (vm.topk or vm.entropy) or kind != "text":
+            return
+        rows: list[tuple[str, str]] = []
+        if vm.entropy and viz.get("entropy") is not None:
+            rows.append((f"  entropy {viz['entropy']:.2f} nats", "dim"))
+        if vm.topk and viz.get("top"):
+            chosen = viz["top"][0][0] if viz["top"] else None
+            rows += topk_lines(viz["top"], chosen=chosen)
+        if rows:
+            self._ui(self.app.update_viz_panel, rows)
 
     # -- MDUI helpers (only used when _md_on) --
     def _flush_think(self) -> None:
@@ -85,9 +123,15 @@ class TuiIO:
     def stream_started(self) -> None:
         self._t0, self._ttft = time.time(), None
 
-    def delta(self, kind: str, text: str) -> None:
+    def delta(self, kind: str, text: str, viz: dict | None = None) -> None:
         if self._ttft is None:
             self._ttft = time.time() - self._t0
+        vm = getattr(self.app, "viz", None)
+        if viz and vm:
+            self._viz_overlays(kind, viz)  # top-k + entropy panel
+            if kind == "text" and vm.heatmap and not self._md_on():
+                self._heat(text, viz.get("conf"))  # colour the token by confidence
+                return
         if not self._md_on():
             # default plain mode (known-good): stream line-by-line
             if kind != self._kind:

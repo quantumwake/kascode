@@ -82,7 +82,7 @@ class ConsoleIO:
         self._t0, self._ttft = time.time(), None
         self.hb = Heartbeat(self.base_url)
 
-    def delta(self, kind: str, text: str) -> None:
+    def delta(self, kind: str, text: str, viz=None) -> None:
         if self._ttft is None:
             self._ttft = time.time() - self._t0
         if self.hb:

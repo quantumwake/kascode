@@ -316,6 +316,25 @@ class MlxEngine:
     def encode(self, text: str) -> list[int]:
         return self.tokenizer.encode(text, add_special_tokens=False)
 
+    def _token_viz(self, resp) -> dict | None:
+        """Per-token logprob summary for /viz, from mlx_lm's GenerationResponse.
+        Best-effort: any shape mismatch / missing logprobs -> None (no viz, normal
+        generation continues)."""
+        try:
+            mx = self._mx
+            lp = getattr(resp, "logprobs", None)
+            if lp is None or lp.ndim != 1:  # need the full per-vocab logprob vector
+                return None
+            p = mx.exp(lp)
+            conf = float(p[resp.token])
+            entropy = float(-mx.sum(p * lp))  # nats
+            k = 5
+            idx = mx.argsort(-lp)[:k]  # top-k token ids by probability
+            top = [[self.tokenizer.decode([int(i)]), float(p[int(i)])] for i in idx.tolist()]
+            return {"conf": conf, "entropy": entropy, "top": top}
+        except Exception:
+            return None
+
     def generate(
         self,
         prompt_tokens: list[int],
@@ -325,6 +344,7 @@ class MlxEngine:
         stop_sequences: list[str],
         cache_key: str = "main",
         persist_dir: str | None = None,
+        viz: bool = False,
     ) -> Iterator[GenChunk]:
         slot = self._slot(cache_key)
 
@@ -447,15 +467,16 @@ class MlxEngine:
                     gen_ids.append(resp.token)
                     text = resp.text
                     emitted += text
+                    tok_viz = self._token_viz(resp) if viz else None
                     # Manual stop-sequence handling (mlx_lm only stops on EOS).
                     hit = next((s for s in stop_sequences if s in emitted), None)
                     if hit is not None:
                         cut = emitted.index(hit)
                         overshoot = len(emitted) - cut
-                        yield GenChunk(text=text[: max(0, len(text) - overshoot)])
+                        yield GenChunk(text=text[: max(0, len(text) - overshoot)], viz=tok_viz)
                         finish = "stop_sequence"
                         break
-                    yield GenChunk(text=text)
+                    yield GenChunk(text=text, viz=tok_viz)
                 else:
                     finish = (last.finish_reason if last else None) or "stop"
             except _Cancelled:

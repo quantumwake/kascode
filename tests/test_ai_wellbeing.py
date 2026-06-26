@@ -153,7 +153,7 @@ class FakeIO:
     def stream_finished(self, u):
         pass
 
-    def delta(self, k, t):
+    def delta(self, k, t, viz=None):
         pass
 
 

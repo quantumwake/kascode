@@ -73,6 +73,10 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         dock: top; height: 1; background: $surface;
         color: $foreground; padding: 0 1; display: none;
     }
+    #vizpanel {
+        dock: top; height: auto; max-height: 9; background: $surface;
+        color: $foreground; padding: 0 1; display: none;
+    }
     #body { height: 1fr; padding: 0 1; background: $background; color: $foreground; }
     #status { height: 1; background: $surface; color: $accent; padding: 0 1; }
     #fx { height: 1; background: $background; color: $foreground; padding: 0 1; }
@@ -182,6 +186,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         # swaps in a plain RichLog (a suspect in the rich-output regression).
         body_cls = SelectableRichLog if self._mouse_select else RichLog
         yield body_cls(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
+        yield Static("", id="vizpanel")  # /viz top-k + entropy, docked (hidden by default)
         yield Static("", id="status")
         yield FxBar()
         yield PasteInput(
@@ -444,6 +449,20 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
                 elif role == "assistant" and btype == "tool_use":
                     args = json.dumps(b.get("input", {}), ensure_ascii=False)[:200]
                     self.body_write(Text(f"→ {b.get('name', '')}({args})", style="bold cyan"))
+
+    def update_viz_panel(self, rows) -> None:
+        """Render the /viz top-k + entropy rows into the docked panel (in place)."""
+        t = Text()
+        for i, (text, style) in enumerate(rows):
+            if i:
+                t.append("\n")
+            t.append(text, style=style)
+        panel = self.query_one("#vizpanel", Static)
+        panel.update(t)
+        panel.display = True
+
+    def hide_viz_panel(self) -> None:
+        self.query_one("#vizpanel", Static).display = False
 
     def body_write(self, renderable) -> None:
         log = self.query_one("#body", RichLog)

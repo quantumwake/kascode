@@ -31,4 +31,8 @@ class VizCommand(Command):
         elif a not in ("", "status"):
             app.body_write(Text("usage: /viz [heatmap|topk|entropy|all|off]", style="yellow"))
             return
+        if not (m.topk or m.entropy):  # the panel only serves top-k / entropy
+            getattr(app, "hide_viz_panel", lambda: None)()
         app.body_write(Text(m.summary(), style="#c792ea"))
+        if m.any_on:
+            app.body_write(Text("  (server emits per-token logprobs only while viz is on)", "dim"))

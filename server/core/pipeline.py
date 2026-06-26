@@ -69,6 +69,7 @@ def run(
     memos: dict[str, dict],
     thread: str = "main",
     persist_dir: str | None = None,
+    viz: bool = False,
 ) -> Iterator[dict[str, Any]]:
     """Generate and yield normalized events (see module docstring)."""
     assert engine is not None
@@ -85,6 +86,8 @@ def run(
     usage = {"input_tokens": len(prompt_tokens), "output_tokens": 0}
     blocks: list[dict[str, Any]] = []  # assembled response, for the continuation memo
 
+    current_viz: dict | None = None  # the viz of the chunk currently being parsed
+
     def to_events(parsed) -> Iterator[dict[str, Any]]:
         for kind, payload in parsed:
             if kind == "tool_use":
@@ -96,7 +99,10 @@ def run(
                     blocks[-1][field] += payload
                 else:
                     blocks.append({"type": kind, field: payload})
-                yield {"kind": kind, "text": payload}
+                ev = {"kind": kind, "text": payload}
+                if kind == "text" and current_viz is not None:  # heatmap aligns ~per token
+                    ev["viz"] = current_viz
+                yield ev
 
     # Wall-clock keep-alive. The engine emits chunk.ping only when its worker
     # queue is empty (a silent prefill). During a long tool call the queue is
@@ -140,6 +146,7 @@ def run(
         stop_sequences=req.stop_sequences,
         cache_key=thread,
         persist_dir=persist_dir,
+        viz=viz,
     ):
         if chunk.ping:
             last_emit = time.monotonic()
@@ -165,6 +172,7 @@ def run(
                 chunk.finish_reason,
             )
             break
+        current_viz = chunk.viz
         yield from keepalive_wrap(to_events(parser.feed(chunk.text)))
 
     yield from to_events(parser.flush())

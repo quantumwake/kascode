@@ -29,6 +29,9 @@ class GenChunk:
     generation_tps: float = 0.0
     peak_memory: float = 0.0  # GB
     finish_reason: str | None = None  # "stop" | "length" | "stop_sequence"
+    # Per-token logprob summary for /viz (only when the client asked, via the
+    # x-agent-viz header): {"conf": float, "entropy": float, "top": [[tok, prob]…]}.
+    viz: dict | None = None
 
 
 class DialectLike(Protocol):
@@ -71,6 +74,7 @@ class EngineLike(Protocol):
         stop_sequences: list[str],
         cache_key: str = "main",
         persist_dir: str | None = None,
+        viz: bool = False,  # emit per-token logprob summaries on GenChunk.viz (for /viz)
     ) -> Iterator[GenChunk]: ...
 
     # -- server management (driven by the HTTP layer, not the core) --
