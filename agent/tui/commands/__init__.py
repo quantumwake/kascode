@@ -74,6 +74,9 @@ class CommandHandler:
     def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         event.input.value = ""
+        if getattr(self, "_fx_browsing", False):  # Enter keeps the browsed effect
+            self.fx_browse_end(keep=True)
+            return
         # confirmations and slash-commands act on the typed line only; staged
         # pastes (if any) stay staged for the next real message.
         if self.confirming:

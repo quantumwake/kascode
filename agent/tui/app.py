@@ -148,6 +148,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self._alive = True
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
         self._completions = COMMANDS  # Tab-complete candidates (see PasteInput)
+        self._fx_browsing = False  # /fx browse: Tab/Space flips effects live
         self.subagents: list = []  # SubagentIO registry (this session)
         # --- markdown UI (MDUI): GATED, default OFF (known-good plain rendering).
         # An earlier rich-output redesign corrupted the RichLog layout in real
@@ -207,7 +208,49 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         if action == "send" and text:
             self._submit_message(text)
 
+    # ---- /fx browse: flip through effects live on the real bar ----
+
+    def fx_browse_start(self) -> None:
+        fx = self.query_one("#fx")
+        self._fx_browsing = True
+        self._fx_browse_prev = fx._pin  # restore on cancel
+        fx.display = True
+        name = fx.cycle(0)  # pin the current effect to start
+        self.query_one(
+            Input
+        ).placeholder = (
+            f"fx browse: {name}  ·  Tab/Space next · Shift+Tab prev · Enter keep · Esc cancel"
+        )
+        self.body_write(
+            Text(
+                f"fx browse: {name}  —  Tab/Space next · Shift+Tab prev · Enter keep · Esc cancel",
+                style="yellow",
+            )
+        )
+
+    def fx_browse_step(self, delta: int) -> None:
+        if not self._fx_browsing:
+            return
+        name = self.query_one("#fx").cycle(delta)
+        self.query_one(
+            Input
+        ).placeholder = f"fx browse: {name}  ·  Tab/Space next · Enter keep · Esc cancel"
+
+    def fx_browse_end(self, keep: bool) -> None:
+        if not self._fx_browsing:
+            return
+        fx = self.query_one("#fx")
+        if not keep:
+            fx._pin = self._fx_browse_prev  # restore what was pinned before
+        self._fx_browsing = False
+        self.query_one(Input).placeholder = PLACEHOLDER
+        kept = fx._pin or "auto"
+        self.body_write(Text(f"fx: {kept}{'' if keep else ' (cancelled)'}", style="yellow"))
+
     def action_interrupt(self) -> None:
+        if self._fx_browsing:  # Esc cancels fx browse before anything else
+            self.fx_browse_end(keep=False)
+            return
         # Escape is a priority binding, so it fires app-wide — even over a modal,
         # whose own escape→dismiss would otherwise be shadowed. So if a modal is
         # open (subagent view, model picker), close THAT first instead of

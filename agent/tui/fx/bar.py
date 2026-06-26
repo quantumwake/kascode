@@ -115,8 +115,11 @@ class FxBar(FxEffects, Static):
         "offline": ("flat",),
     }
     # Per-mode animation speed (float step added to self._t each tick). idle drifts
-    # gently; working states race so the difference reads at a glance.
-    MODE_SPEED = {"idle": 0.5, "prefill": 1.0, "generating": 2.0, "tools": 1.6, "offline": 0.4}
+    # SLOWLY (calm/ambient); working states race so the difference reads at a glance.
+    # Scaled by self._speed (/fx speed).
+    MODE_SPEED = {"idle": 0.22, "prefill": 1.0, "generating": 2.0, "tools": 1.6, "offline": 0.18}
+    # /fx speed presets -> the global multiplier applied to MODE_SPEED.
+    SPEED_PRESETS = {"slow": 0.4, "normal": 1.0, "fast": 1.8, "turbo": 3.0}
     # Named colour themes for `/theme <name>` — pins the whole bar to one palette
     # (overrides idle's rotation + the working signature). `/theme auto` clears it.
     THEMES = {
@@ -187,6 +190,7 @@ class FxBar(FxEffects, Static):
         self._effect = "twinkle"
         self._cur: str | None = None  # last effect actually rendered (to reset buffers on change)
         self._pin: str | None = None  # forced effect (/fx <name>); None = rotate
+        self._speed = 1.0  # global animation-speed multiplier (/fx speed)
         self._palette: list[str] | None = None  # current colour scheme
         self._theme: list[str] | None = None  # /theme override: pins palette for all states
         self._theme_name: str | None = None  # name of the active /theme (None = auto)
@@ -219,6 +223,36 @@ class FxBar(FxEffects, Static):
             self._palette = self._theme
             return f"theme: {name}"
         return f"unknown theme {name!r} — try: {names}, auto"
+
+    def cycle(self, delta: int = 1) -> str:
+        """Pin the effect `delta` steps from the current one (wraps). delta=0 pins
+        the current effect as-is. Used by /fx browse to flip through them live."""
+        effs = list(self.EFFECTS)
+        cur = self._pin or self._effect
+        i = effs.index(cur) if cur in effs else 0
+        name = effs[(i + delta) % len(effs)]
+        self._pin = name
+        self._effect = name
+        return name
+
+    def set_speed(self, arg: str) -> str:
+        """`/fx speed <slow|normal|fast|turbo|0.1-5.0>` — animation-speed multiplier."""
+        a = (arg or "").strip().lower()
+        if a in self.SPEED_PRESETS:
+            self._speed = self.SPEED_PRESETS[a]
+        elif a:
+            try:
+                self._speed = max(0.1, min(5.0, float(a)))
+            except ValueError:
+                return f"fx speed {self._speed:.2f}× — use slow|normal|fast|turbo or 0.1–5.0"
+        return f"fx speed: {self._speed:.2f}×"
+
+    def status(self) -> str:
+        eff = self._pin or f"auto:{self._effect}"
+        return (
+            f"fx {'on' if self.display else 'off'} · effect {eff} · "
+            f"speed {self._speed:.2f}× · theme {self._theme_name or 'auto'}"
+        )
 
     def _tick(self) -> None:
         w = max(0, self.size.width)
@@ -255,7 +289,7 @@ class FxBar(FxEffects, Static):
         if effect != self._cur:
             self._cells, self._glyphs, self._stars = [], [], []
             self._cur = effect
-        self._tf += self.MODE_SPEED.get(mode, 1.0)
+        self._tf += self.MODE_SPEED.get(mode, 1.0) * self._speed
         self._t = int(self._tf)
         fn = getattr(self, "_" + effect, self._twinkle)
         self.update(fn(w, shades))

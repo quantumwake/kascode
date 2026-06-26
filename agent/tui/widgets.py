@@ -197,6 +197,20 @@ class PasteInput(Input):
         super()._on_paste(event)
 
     def on_key(self, event) -> None:
+        # /fx browse mode: Tab/Space/→/↓ flip to the next effect, Shift+Tab/←/↑ to
+        # the previous, on the live bar. Enter (keep) and Esc (cancel) are handled
+        # by on_input_submitted / action_interrupt; everything else is swallowed so
+        # the input stays clean while flipping.
+        if getattr(self.app, "_fx_browsing", False):
+            if event.key in ("enter", "escape"):
+                return
+            event.stop()
+            event.prevent_default()
+            if event.key in ("tab", "space", "right", "down"):
+                self.app.fx_browse_step(1)
+            elif event.key in ("shift+tab", "left", "up"):
+                self.app.fx_browse_step(-1)
+            return
         # Tab autocompletes a /command (shell-style: extend to the shared prefix,
         # then list the options). Handled here so it beats focus-navigation.
         if event.key == "tab" and not getattr(self.app, "confirming", False):
