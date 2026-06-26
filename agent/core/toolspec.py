@@ -262,9 +262,9 @@ TOOLS: list[dict] = [
     {
         "name": "edit_file",
         "description": (
-            "Apply a patch to a file: replace an exact string. old_string must "
-            "appear exactly once; read the file first to copy it verbatim. This is "
-            "the preferred way to modify existing files — patch, don't rewrite."
+            "Replace an exact string in a file — for a SINGLE small spot. old_string "
+            "must appear exactly once; read the file first to copy it verbatim. For "
+            "several edits in one file, prefer apply_patch. Never rewrite the file."
         ),
         "input_schema": {
             "type": "object",
@@ -279,12 +279,13 @@ TOOLS: list[dict] = [
     {
         "name": "apply_patch",
         "description": (
-            "Apply a unified diff (git patch) to the workspace. PREFER THIS for "
-            "multi-hunk or larger edits to existing files — it changes only the "
-            "affected lines instead of resending the whole file (cheaper and less "
-            "error-prone than write_file). Give a standard unified diff with @@ hunk "
-            "headers; git-style 'a/path' and 'b/path' headers are fine. Context lines "
-            "must match the current file. Use write_file to create a brand-new file."
+            "Apply a unified diff (git patch) to the workspace — the PREFERRED way to "
+            "edit existing files. It changes only the affected lines (not the whole "
+            "file) and lands several edits across a file in ONE call. Works even when "
+            "the workspace isn't a git repo (no git init needed). Give a standard "
+            "unified diff with @@ hunk headers; git-style 'a/path' and 'b/path' headers "
+            "are fine, and context lines must match the current file. Use write_file "
+            "only to create a brand-new file."
         ),
         "input_schema": {
             "type": "object",
