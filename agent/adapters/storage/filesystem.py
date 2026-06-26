@@ -7,6 +7,7 @@ silently lost).
 
 import json
 import pathlib
+import secrets
 import time
 
 from ...core.transcript import jsonable
@@ -17,7 +18,10 @@ class SessionStore:
 
     def __init__(self, workdir: pathlib.Path, session_id: str | None = None) -> None:
         self.root = pathlib.Path(workdir) / ".agent" / "sessions"
-        self.id = session_id or time.strftime("%Y%m%d-%H%M%S")
+        # A short random suffix on the timestamp so two agents started in the SAME
+        # second get distinct ids — otherwise they'd share a session dir AND (since
+        # the id becomes the server KV-thread key) the same KV cache slot.
+        self.id = session_id or f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         self.dir = self.root / self.id
         self.compactions = len(list(self.dir.glob("compaction-*.json"))) if self.dir.exists() else 0
 

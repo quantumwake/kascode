@@ -36,6 +36,7 @@ def run_subagent(
     model: str,
     max_tokens: int,
     args: dict,
+    parent_thread: str = "main",
 ) -> tuple[str, bool]:
     """Execute one subagent task in a fresh context; return its final report."""
     global _subagent_seq
@@ -46,7 +47,9 @@ def run_subagent(
         task += f"\n\nYour final reply MUST contain: {args['report']}"
     _subagent_seq += 1
     n = _subagent_seq
-    thread = f"sub-{n}"  # own KV-cache slot + memo, isolated from main
+    # Namespace the subagent's KV slot/memo under the PARENT session so two
+    # concurrent sessions' subagents (each sub-1, sub-2, …) don't collide.
+    thread = f"{parent_thread}-sub-{n}"
     # The parent picks the round budget by task complexity; clamp to the ceiling.
     requested = (args or {}).get("max_rounds")
     try:
@@ -159,7 +162,9 @@ def _stream_response(
         return (stream.get_final_message() if not aborted else None), aborted
 
 
-def _execute_tool_calls(client, response, runner, io, model, max_tokens, is_subagent) -> list:
+def _execute_tool_calls(
+    client, response, runner, io, model, max_tokens, is_subagent, thread="main"
+) -> list:
     """Run every completed tool_use block in the response (subagent delegation or
     runner.run), reporting each call/result to `io`. Returns the tool_result
     blocks to feed back to the model."""
@@ -172,7 +177,9 @@ def _execute_tool_calls(client, response, runner, io, model, max_tokens, is_suba
             if is_subagent:
                 output, is_error = "subagents cannot spawn subagents", True
             else:
-                output, is_error = run_subagent(client, runner, io, model, max_tokens, block.input)
+                output, is_error = run_subagent(
+                    client, runner, io, model, max_tokens, block.input, parent_thread=thread
+                )
         else:
             output, is_error = runner.run(block.name, block.input)
         io.tool_result(output, is_error)
@@ -198,7 +205,7 @@ def agent_turn(
     store=None,
     is_subagent: bool = False,
     max_rounds: int | None = None,
-    thread: str = "main",
+    thread: str | None = None,
 ) -> None:
     """One user turn: loop until the model stops calling tools.
 
@@ -206,6 +213,12 @@ def agent_turn(
     text alongside the next tool results, so the model sees them at the next
     boundary without interrupting generation.
     """
+    # The server keys the KV-cache slot + continuation memo by the x-agent-thread
+    # header. Default it to the SESSION ID (unique per agent process, yet stable
+    # across --resume so warm-resume still works) rather than a shared "main" —
+    # otherwise multiple concurrent agents collide on one KV slot and cross-talk.
+    if thread is None:
+        thread = getattr(store, "id", None) or "main"
     model = model or config.MODEL
     max_tokens = max_tokens or config.MAX_TOKENS
     # The soft size cap lives on the runner (so /ctx can change it live); a
@@ -296,7 +309,9 @@ def agent_turn(
 
         # Execute any COMPLETED tool calls (present even when a later call in
         # the same response was truncated).
-        results = _execute_tool_calls(client, response, runner, io, model, max_tokens, is_subagent)
+        results = _execute_tool_calls(
+            client, response, runner, io, model, max_tokens, is_subagent, thread=thread
+        )
 
         if results:
             sha = runner.checkpoint(turn_label(messages))
