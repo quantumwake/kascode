@@ -54,7 +54,7 @@ async def _t() -> None:
         print("Ctrl+O compose + Ctrl+S send (multiline preserved): OK")
 
         # --- a multiline paste auto-opens the composer pre-filled with it ---
-        app.action_compose("alpha\nbeta\ngamma")  # exactly what PasteInput._on_paste calls
+        app.action_compose("alpha\nbeta\ngamma")  # what Ctrl+O does (manual compose)
         await pilot.pause(0.1)
         assert isinstance(app.screen, Composer)
         assert app.screen.query_one(TextArea).text == "alpha\nbeta\ngamma"

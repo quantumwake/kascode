@@ -9,6 +9,7 @@ Three panels:
 """
 
 import json
+import pathlib
 import queue
 import threading
 
@@ -37,6 +38,16 @@ from .stats import StatsPanel
 from .widgets import Composer, PasteInput, SelectableRichLog
 
 PLACEHOLDER = "task or steering · / for commands (Tab completes, /help) · exit"
+
+
+def _is_json(text: str) -> bool:
+    try:
+        json.loads(text)
+        return True
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
 # Inline ghost suggestions + Tab-complete candidates, generated from the command
 # registry (names + subcommands) so they never drift from the actual commands.
 COMMANDS = command_completions()
@@ -186,6 +197,38 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
             Text(
                 f"[staged draft · {lines} lines · {chars} chars — Ctrl+O to edit, "
                 "or type an instruction (or just Enter) to send]",
+                style="magenta",
+            )
+        )
+
+    def spill_paste_to_file(self, text: str) -> None:
+        """Pasting a big/multiline blob into a one-line input is awkward (and breaks
+        outright if the terminal has no bracketed-paste). Instead, write the paste
+        to a temp file under .agent/pastes/ and drop a compact reference inline, so
+        the line reads e.g. `do X with this [pasted content @ .agent/pastes/ab12.txt]`
+        and the agent reads the file. .agent is gitignored, so nothing leaks."""
+        import hashlib
+
+        ext = "json" if text.lstrip()[:1] in "{[" and _is_json(text) else "txt"
+        digest = hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()[:8]
+        d = pathlib.Path(self.workdir) / ".agent" / "pastes"
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"{digest}.{ext}"
+        try:
+            path.write_text(text)
+            rel = path.relative_to(self.workdir)
+        except OSError as exc:
+            self.body_write(Text(f"[paste spill failed: {exc}]", style="red"))
+            return
+        ref = f"[pasted content @ {rel}]"
+        inp = self.query_one(Input)
+        pos = inp.cursor_position
+        inp.value = f"{inp.value[:pos]}{ref}{inp.value[pos:]}"
+        inp.cursor_position = pos + len(ref)
+        lines = text.count("\n") + 1
+        self.body_write(
+            Text(
+                f"[pasted {lines} lines · {len(text)} chars → {rel} · referenced inline]",
                 style="magenta",
             )
         )

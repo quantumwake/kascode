@@ -181,18 +181,21 @@ class Composer(ModalScreen):
 
 
 class PasteInput(Input):
-    """Single-line Input that doesn't shred multiline paste.
+    """Single-line Input that doesn't shred a big/multiline paste.
 
-    Stock Input._on_paste keeps only splitlines()[0]. We intercept a multiline
-    paste and pop the Composer (a real multi-line editor) pre-filled with it, so
-    the full text is visible and editable instead of being flattened into the
-    one-line field.
+    Stock Input._on_paste keeps only splitlines()[0]. We intercept a multiline (or
+    long) paste and spill it to a temp file, dropping a compact `@file` reference
+    inline (see AgentApp.spill_paste_to_file) — robust even when the terminal has
+    no bracketed-paste. Ctrl+O still opens the Composer for composing by hand.
     """
 
     def _on_paste(self, event) -> None:
-        if event.text and "\n" in event.text:
+        # A big/multiline paste is spilled to a temp file and referenced inline
+        # (see AgentApp.spill_paste_to_file) rather than flooded into the one-line
+        # field. Short single-line pastes insert normally.
+        if event.text and ("\n" in event.text or len(event.text) > 200):
             event.stop()
-            self.app.action_compose(event.text)
+            self.app.spill_paste_to_file(event.text)
             return
         super()._on_paste(event)
 
