@@ -61,10 +61,33 @@ finally:
     be.BACKENDS.pop("faux2", None)
 print("supported backend builds: OK")
 
-# --- mlx is registered; available iff this host is Apple Silicon -----------
+# --- mlx is registered; available iff this host is Apple Silicon + installed -
 assert "mlx" in be.BACKENDS
 on_apple = platform.system() == "Darwin" and platform.machine() == "arm64"
-assert ("mlx" in available_backends()) == on_apple
+import importlib.util
+
+have_mlx = importlib.util.find_spec("mlx_lm") is not None
+assert ("mlx" in available_backends()) == (on_apple and have_mlx)
 print(f"platform routing (apple_silicon={on_apple}): OK")
+
+
+# --- llama.cpp/GGUF: registered, cross-platform, package-gated --------------
+assert "llama_cpp" in be.BACKENDS
+lc = be.BACKENDS["llama_cpp"]
+assert lc.supported() is True, "llama.cpp runs on any OS/arch"
+have_llama = importlib.util.find_spec("llama_cpp") is not None
+assert ("llama_cpp" in available_backends()) == have_llama
+# supported here but the package is absent -> a clear 'not installed' error (no import)
+if not have_llama:
+    try:
+        make_engine("model.gguf", backend="llama_cpp")
+        raise AssertionError("uninstalled-but-supported backend should raise")
+    except RuntimeError as e:
+        assert "not installed" in str(e), e
+# the backend module imports fine WITHOUT llama-cpp-python (deferred import)
+import server.backends.llama_cpp as lcmod
+
+assert hasattr(lcmod, "LlamaCppEngine")
+print("llama.cpp registered + cross-platform + install-gated + deferred import: OK")
 
 print("all backend tests passed")

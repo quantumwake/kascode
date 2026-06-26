@@ -18,10 +18,11 @@ auto-detect from the model id + platform. Loaders are lazy (imported only when a
 supported backend is chosen).
 """
 
+import importlib.util
 import os
 import platform
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..core.ports import EngineLike
 
@@ -43,27 +44,48 @@ def _load_mlx() -> EngineFactory:
     return MlxEngine
 
 
+def _load_llama_cpp() -> EngineFactory:
+    from .llama_cpp import LlamaCppEngine
+
+    return LlamaCppEngine
+
+
+def _has(module: str) -> Callable[[], bool]:
+    # importable check WITHOUT importing (find_spec doesn't run the module).
+    return lambda: importlib.util.find_spec(module) is not None
+
+
 @dataclass(frozen=True)
 class Backend:
     load: Callable[[], EngineFactory]  # lazy: returns the constructor
     supported: Callable[[], bool]  # does the current OS/arch support it?
-    requires: str  # human note shown when it isn't supported here
+    requires: str  # human note shown when it isn't supported / installed here
+    installed: Callable[[], bool] = field(default=lambda: True)  # is its package present?
 
 
-# The whole extension list. Add new backends here, e.g.
-#   "llama_cpp": Backend(_load_llama_cpp, lambda: True, "llama-cpp-python (any OS)")
+# The whole extension list. supported() gates on OS/arch (checked BEFORE import);
+# installed() gates on the package being present. llama.cpp/GGUF is cross-platform
+# (CPU + CUDA + ROCm + Metal, depending on how llama-cpp-python was built), so it's
+# the portable path for non-Apple hardware.
 BACKENDS: dict[str, Backend] = {
     "mlx": Backend(
         load=_load_mlx,
         supported=_is_apple_silicon,
-        requires="macOS on Apple Silicon (arm64)",
+        installed=_has("mlx_lm"),
+        requires="macOS on Apple Silicon (arm64) with mlx-lm",
+    ),
+    "llama_cpp": Backend(
+        load=_load_llama_cpp,
+        supported=lambda: True,
+        installed=_has("llama_cpp"),
+        requires="llama-cpp-python (any OS; build with CUDA/ROCm/Metal for GPU)",
     ),
 }
 
 
 def available_backends() -> list[str]:
-    """Backends that can actually run on this host (right OS/arch)."""
-    return sorted(name for name, b in BACKENDS.items() if b.supported())
+    """Backends that can actually run on this host (right OS/arch + installed)."""
+    return sorted(name for name, b in BACKENDS.items() if b.supported() and b.installed())
 
 
 def _detect_backend(model_id: str) -> str:
@@ -103,5 +125,11 @@ def make_engine(model_id: str, backend: str | None = None) -> EngineLike:
         raise RuntimeError(
             f"backend {name!r} needs {b.requires}, but this host is {here}. "
             f"Set KAS_BACKEND to a supported backend ({usable})."
+        )
+    if not b.installed():  # supported on this OS/arch, but its package isn't here
+        raise RuntimeError(
+            f"backend {name!r} is supported on this host but not installed — needs "
+            f"{b.requires}. Install it, or set KAS_BACKEND to an installed backend "
+            f"({', '.join(available_backends()) or 'none yet'})."
         )
     return b.load()(model_id)  # lazy-import the chosen backend, then construct
