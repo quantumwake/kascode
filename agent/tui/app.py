@@ -35,6 +35,7 @@ from .fx import FxBar
 from .io import TuiIO
 from .loops import WorkerLoops
 from .stats import StatsPanel
+from .viz import VizModes
 from .widgets import Composer, PasteInput, SelectableRichLog
 
 PLACEHOLDER = "task or steering · / for commands (Tab completes, /help) · exit"
@@ -162,6 +163,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
         self._completions = COMMANDS  # Tab-complete candidates (see PasteInput)
         self._fx_browsing = False  # /fx browse: Tab/Space flips effects live
+        self.viz = VizModes()  # /viz: per-token confidence/topk/entropy overlays
         self.subagents: list = []  # SubagentIO registry (this session)
         # --- markdown UI (MDUI): GATED, default OFF (known-good plain rendering).
         # An earlier rich-output redesign corrupted the RichLog layout in real

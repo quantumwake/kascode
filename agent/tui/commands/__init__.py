@@ -28,6 +28,7 @@ from .status import StatusCommand
 from .stop import StopCommand
 from .subagent import SubagentCommand
 from .theme import ThemeCommand
+from .viz import VizCommand
 from .yolo import YoloCommand
 
 # Ordered: prefix-matching commands (/model, /rag, /subagent) keep their relative
@@ -44,6 +45,7 @@ REGISTRY = [
     SubagentCommand(),
     FxCommand(),
     ThemeCommand(),
+    VizCommand(),
     MemoryCommand(),
     RagCommand(),  # deprecated alias — keep after /memory so it doesn't shadow it
     StatsCommand(),
