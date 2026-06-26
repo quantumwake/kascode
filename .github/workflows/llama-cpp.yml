@@ -1,0 +1,44 @@
+name: llama-cpp
+
+# Validates the portable llama.cpp/GGUF inference backend against a REAL runtime
+# (the main `ci` workflow can't — it has no model/GPU). Free CPU smoke: a prebuilt
+# CPU wheel (no source compile) + a tiny GGUF, exercising load + generate + KV
+# warm-resume (persist/rehydrate). Manual + weekly so it never slows the push gate.
+#
+# The GPU variant (CUDA/ROCm) is the follow-up: the same job on an ephemeral GPU
+# runner (Modal for NVIDIA, RunPod for AMD), triggered from here.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+
+jobs:
+  cpu-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.11
+
+      - name: Install deps + llama-cpp-python (prebuilt CPU wheel, no compile)
+        run: |
+          uv sync --extra dev
+          uv pip install llama-cpp-python \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          uv pip install huggingface-hub
+
+      - name: Fetch a tiny GGUF (Qwen2.5-0.5B, ~400MB, has a chat template)
+        run: |
+          uv run python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          path = hf_hub_download(
+              "bartowski/Qwen2.5-0.5B-Instruct-GGUF",
+              "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf",
+          )
+          open("gguf_path.txt", "w").write(path)
+          print("fetched:", path)
+          PY
+
+      - name: Live backend smoke (load + generate + KV warm-resume)
+        run: KAS_TEST_GGUF="$(cat gguf_path.txt)" uv run python tests/test_llama_cpp_live.py

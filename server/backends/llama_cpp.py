@@ -2,29 +2,53 @@
 Vulkan, depending on how llama-cpp-python was built). This is the portable path
 for non-Apple hardware — one runtime covers NVIDIA and AMD and CPU.
 
-Conforms to server.core.ports.EngineLike. It's a focused MVP: load + chat-template
-tokenize + streaming generate + stats + the management ops. The token-level KV
-warm-resume that the MLX backend implements (cache_snapshot / persist / rehydrate)
-is intentionally a no-op here for now — recall still works, prefills are just cold.
-That's the documented follow-up; this layer is validated on CPU CI + GPU CI
-(Modal/RunPod) rather than on the Apple-only dev box, so the heavy import is
-deferred and the runtime glue is kept standard.
+Conforms to server.core.ports.EngineLike: load + chat-template tokenize + streaming
+generate + stats + management, plus KV warm-resume via llama.cpp's OWN state files
+(in-memory prefix reuse between turns; llama_state_seq_save_file/load_file across a
+restart, model-id guarded). The heavy import is deferred and the runtime glue is
+kept standard + best-effort (any KV failure falls back to a cold prefill, never a
+broken turn); the runtime path is validated on CPU CI + GPU CI (Modal/RunPod)
+rather than on the Apple-only dev box.
 
 Model resolution (model_id): a local *.gguf path, or a Hugging Face repo id (then
 KAS_GGUF_FILE selects the quant file, default '*Q4_K_M.gguf'). GPU offload via
 KAS_GPU_LAYERS (-1 = all layers, the default); context via KAS_CTX.
 """
 
+import json
 import logging
 import os
+import pathlib
 import threading
 import time
 from collections.abc import Iterator
 from typing import Any
 
+from ..core.cache import longest_common_prefix
 from ..core.ports import GenChunk
 
 log = logging.getLogger("kas.llama_cpp")
+
+
+def _kv_paths(persist_dir: str, thread: str) -> tuple[pathlib.Path, pathlib.Path]:
+    d = pathlib.Path(persist_dir) / "kvcache" / thread
+    return d / "kv.bin", d / "meta.json"
+
+
+def kv_restore_plan(persist_dir: str, thread: str, model_id: str) -> tuple[bool, str]:
+    """Pure pre-check for rehydrate (unit-testable without llama.cpp): is there a
+    saved KV for this thread, and was it built with the SAME model? A KV cache is
+    model-specific, so restoring across a model switch would be garbage — guard it."""
+    kv, meta = _kv_paths(persist_dir, thread)
+    if not kv.exists() or not meta.exists():
+        return False, "no saved KV — cold prefill"
+    try:
+        saved = json.loads(meta.read_text()).get("model")
+    except (OSError, json.JSONDecodeError):
+        return False, "unreadable KV meta — cold prefill"
+    if saved != model_id:
+        return False, f"model changed ({saved} != {model_id}) — cold prefill"
+    return True, "ok"
 
 
 class LlamaCppEngine:
@@ -44,6 +68,7 @@ class LlamaCppEngine:
         self._cancel = threading.Event()
         self._lock = threading.Lock()  # llama.cpp Llama is not reentrant (single-stream)
         self._Llama = Llama
+        self._cached_tokens: list[int] = []  # tokens currently held in the KV cache
         self._load(model_id)
 
     # --- loading -------------------------------------------------------------
@@ -65,6 +90,7 @@ class LlamaCppEngine:
                 **common,
             )
         self.model_id = model_id
+        self._cached_tokens = []  # a (re)load invalidates any prior KV
         meta = getattr(self._llm, "metadata", {}) or {}
         self._chat_template = meta.get("tokenizer.chat_template")
         self.context_length = int(getattr(self._llm, "n_ctx", lambda: n_ctx)())
@@ -110,7 +136,8 @@ class LlamaCppEngine:
         return self._llm.tokenize(text.encode("utf-8"), add_bos=False, special=False)
 
     def cache_snapshot(self, cache_key: str = "main") -> list[int]:
-        return []  # MVP: no token-level KV warm-resume yet (documented follow-up)
+        """Tokens currently held in the KV cache (for prefix reuse + persistence)."""
+        return list(self._cached_tokens)
 
     # --- generation ----------------------------------------------------------
 
@@ -131,11 +158,16 @@ class LlamaCppEngine:
             gen_ids: list[int] = []
             text = ""
             finish: str | None = "length"
+            full = list(prompt_tokens)
+            # Reuse the KV prefix shared with the last request (append-only
+            # transcripts share a long head): reset only when nothing overlaps, so
+            # llama.cpp re-evals just the new suffix instead of the whole prompt.
+            cached = longest_common_prefix(self._cached_tokens, full)
             stream = self._llm.generate(
-                list(prompt_tokens),
+                full,
                 temp=0.0 if temperature is None else float(temperature),
                 top_p=1.0 if top_p is None else float(top_p),
-                reset=True,
+                reset=(cached == 0),
             )
             for tok in stream:
                 if self._cancel.is_set():
@@ -169,16 +201,71 @@ class LlamaCppEngine:
                     finish = "length"
                     break
             self.stats = {"active": False}
+            # The cache now holds the prompt + every generated token except the
+            # last (never fed back) — mirrors the MLX backend's accounting.
+            self._cached_tokens = full + gen_ids[:-1] if gen_ids else full
+            if persist_dir and not self._cancel.is_set():
+                self._persist(cache_key, persist_dir)
             gen_tps = round(len(gen_ids) / max(1e-3, time.time() - t0), 1)
             yield GenChunk(
                 text="",
                 done=True,
                 prompt_tokens=len(prompt_tokens),
-                cached_tokens=0,
+                cached_tokens=cached,
                 generation_tokens=len(gen_ids),
                 generation_tps=gen_tps,
                 finish_reason=finish,
             )
+
+    # --- KV persistence (warm --resume; llama.cpp's own state files) ---------
+    # Best-effort, like the MLX backend: any failure -> no persistence, never a
+    # broken turn. llama.cpp serializes its OWN KV (ggml tensors in the context)
+    # via llama_state_seq_save_file/load_file — a different format from MLX's
+    # safetensors deltas, because the caches live in different memory. Full
+    # snapshot per save (vs MLX's incremental deltas), but the restore is a fast
+    # memcpy, so --resume fills the cache instantly instead of cold-prefilling.
+
+    def _persist(self, thread: str, persist_dir: str) -> None:
+        try:
+            import llama_cpp
+
+            kv, meta = _kv_paths(persist_dir, thread)
+            kv.parent.mkdir(parents=True, exist_ok=True)
+            toks = self._cached_tokens
+            arr = (llama_cpp.llama_token * len(toks))(*toks)
+            ctx = self._llm._ctx.ctx
+            llama_cpp.llama_state_seq_save_file(ctx, str(kv).encode(), 0, arr, len(toks))
+            meta.write_text(json.dumps({"model": self.model_id, "n": len(toks)}))
+        except Exception:
+            log.info("kv persist failed; next resume will cold-prefill", exc_info=True)
+
+    def rehydrate(self, thread: str, persist_dir: str) -> str:
+        """Restore this thread's KV from disk IF it was saved with the same model
+        (a KV cache is model-specific). Returns a status string; the HTTP layer
+        only treats a 'rehydrated …' prefix as a cache hit."""
+        ok, reason = kv_restore_plan(persist_dir, thread, self.model_id)
+        if not ok:
+            return reason
+        try:
+            import ctypes
+
+            import llama_cpp
+
+            kv, meta = _kv_paths(persist_dir, thread)
+            n = int(json.loads(meta.read_text())["n"])
+            out = (llama_cpp.llama_token * n)()
+            n_out = ctypes.c_size_t(0)
+            ctx = self._llm._ctx.ctx
+            llama_cpp.llama_state_seq_load_file(
+                ctx, str(kv).encode(), 0, out, n, ctypes.byref(n_out)
+            )
+            self._cached_tokens = list(out[: n_out.value])
+            self._llm.n_tokens = n_out.value  # tell the wrapper the cache is warm
+            return f"rehydrated {n_out.value} KV tokens"
+        except Exception:
+            log.info("kv rehydrate failed; cold prefill", exc_info=True)
+            self._cached_tokens = []
+            return "rehydrate failed — cold prefill"
 
     # --- management ----------------------------------------------------------
 

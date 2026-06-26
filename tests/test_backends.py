@@ -90,4 +90,24 @@ import server.backends.llama_cpp as lcmod
 assert hasattr(lcmod, "LlamaCppEngine")
 print("llama.cpp registered + cross-platform + install-gated + deferred import: OK")
 
+
+# --- KV warm-resume guard: only restore a cache built with the SAME model ---
+# (pure pre-check, runtime-free — a KV cache is model-specific, so a model switch
+# must cold-prefill, not restore garbage.)
+import json
+import pathlib
+import tempfile
+
+d = pathlib.Path(tempfile.mkdtemp())
+ok, why = lcmod.kv_restore_plan(str(d), "main", "model-A")
+assert not ok and "no saved KV" in why, why  # nothing saved yet
+kvdir = d / "kvcache" / "main"
+kvdir.mkdir(parents=True)
+(kvdir / "kv.bin").write_bytes(b"\x00")
+(kvdir / "meta.json").write_text(json.dumps({"model": "model-A", "n": 3}))
+assert lcmod.kv_restore_plan(str(d), "main", "model-A")[0] is True, "same model -> restore"
+ok2, why2 = lcmod.kv_restore_plan(str(d), "main", "model-B")
+assert not ok2 and "model changed" in why2, why2  # switched model -> cold prefill
+print("KV warm-resume model-id guard: OK")
+
 print("all backend tests passed")
