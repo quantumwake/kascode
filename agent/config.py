@@ -19,9 +19,13 @@ COMPACT_AT = int(os.environ.get("KAS_COMPACT_AT", "120000"))
 # Hard floor on turns between compactions — guarantees no tight loop even if
 # the work keeps refilling context.
 COMPACT_COOLDOWN = int(os.environ.get("KAS_COMPACT_COOLDOWN", "5"))
-# Decode-rate trigger: compaction exists to relieve slow decode, so trigger on
-# the actual symptom. When smoothed decode tok/s drops below this, mark the
-# session compactable (fires at the next safe boundary). 0 disables.
+# Decode-rate trigger: compaction exists to relieve the slowdown a GROWING context
+# causes, so trigger on a RELATIVE drop from the model's own baseline decode speed
+# — not an absolute tok/s (a model whose baseline is ~8 tok/s shouldn't look like
+# it needs compacting just for running at 8). Trip when smoothed decode falls below
+# this fraction of the learned peak/low-context baseline. 0 disables.
+COMPACT_TPS_FRAC = float(os.environ.get("KAS_COMPACT_TPS_FRAC", "0.55"))
+# Deprecated absolute threshold (kept for back-compat; the trigger is relative now).
 COMPACT_TPS = float(os.environ.get("KAS_COMPACT_TPS", "8.0"))
 
 MAX_TOOL_OUTPUT = 8_000

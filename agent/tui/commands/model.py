@@ -70,6 +70,10 @@ class ModelCommand(Command):
                 ).json()
                 if resp.get("ok"):
                     app.model = resp["model"]
+                    # New model -> new decode speed; forget the old baseline so the
+                    # relative compaction trigger re-learns it.
+                    app.runner.tps_baseline = 0.0
+                    app.runner.tps_window.clear()
                     note = f"[now serving {resp['model']} (dialect: {resp.get('dialect')})]"
                 else:
                     note = f"[swap failed: {resp.get('error', {}).get('message', resp)}]"

@@ -20,6 +20,7 @@ class FakeRunner:
         self.compact_cooldown = kw.get("compact_cooldown", 0)
         self.compact_floor = kw.get("compact_floor", 0)
         self.tps_window = deque(kw.get("tps_window", []), maxlen=4)
+        self.tps_baseline = kw.get("tps_baseline", 0.0)
         self.tps_valve = kw.get("tps_valve", True)
         self.hard_limit_frac = kw.get("hard_limit_frac", 0.85)
         self.compact_at = kw.get("compact_at", config.COMPACT_AT)
@@ -39,13 +40,20 @@ assert level == "hard", level
 r = FakeRunner(context_limit=100_000, compact_cooldown=3, tps_window=[1.0, 1.0])
 assert classify_compaction(r, 10_000, 5_000)[0] == "none"
 
-# Decode-speed valve: smoothed tps below COMPACT_TPS over >=2 samples -> soft.
-slow = [config.COMPACT_TPS - 2] * 2
-r = FakeRunner(context_limit=100_000, tps_window=slow)
-assert classify_compaction(r, 10_000, compact_at=0)[0] == "soft"
+# Relative decode trigger: smoothed tps below frac * baseline (>=3 samples) -> soft.
+r = FakeRunner(context_limit=100_000, tps_baseline=20.0, tps_window=[5, 5, 5])
+assert classify_compaction(r, 10_000, compact_at=0)[0] == "soft"  # 5 < 0.55*20
 
-# ...but only when the valve is on.
-r = FakeRunner(context_limit=100_000, tps_window=slow, tps_valve=False)
+# The bug it fixes: an inherently-slow model AT its baseline must NOT trigger.
+r = FakeRunner(context_limit=100_000, tps_baseline=8.0, tps_window=[7.7, 7.7, 7.7])
+assert classify_compaction(r, 26_000, compact_at=0)[0] == "none"  # 7.7 > 0.55*8
+
+# No baseline learned yet -> the decode trigger is skipped entirely.
+r = FakeRunner(context_limit=100_000, tps_baseline=0.0, tps_window=[1, 1, 1])
+assert classify_compaction(r, 10_000, compact_at=0)[0] == "none"
+
+# ...and a real slowdown only compacts when the valve is on.
+r = FakeRunner(context_limit=100_000, tps_baseline=20.0, tps_window=[2, 2, 2], tps_valve=False)
 assert classify_compaction(r, 10_000, compact_at=0)[0] == "none"
 
 # Size cap: grown past compact_at over the floor -> soft.

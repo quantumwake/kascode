@@ -25,6 +25,7 @@ from .config import (
     COMPACT_AT,
     COMPACT_COOLDOWN,
     COMPACT_TPS,
+    COMPACT_TPS_FRAC,
     MAX_TOKENS,
     MAX_TOOL_OUTPUT,
     MODEL,
@@ -79,6 +80,7 @@ __all__ = [
     "COMPACT_AT",
     "COMPACT_COOLDOWN",
     "COMPACT_TPS",
+    "COMPACT_TPS_FRAC",
     "MAX_TOOL_OUTPUT",
 ]
 

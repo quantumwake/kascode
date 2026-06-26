@@ -33,11 +33,19 @@ def classify_compaction(runner, input_tokens: int, compact_at: int):
         return "hard", f"hard context limit ({input_tokens}/{runner.context_limit})"
     if runner.compact_cooldown > 0:
         return "none", ""
+    # Relative decode-rate trigger: compact when decode has dropped well below the
+    # model's OWN baseline (a growing context slowing it) — not below an absolute
+    # tok/s, which mis-fires for an inherently-slow model sitting at its baseline.
     w = runner.tps_window
-    if config.COMPACT_TPS and getattr(runner, "tps_valve", True) and len(w) >= 2:
+    frac = config.COMPACT_TPS_FRAC
+    baseline = getattr(runner, "tps_baseline", 0.0)
+    if frac and getattr(runner, "tps_valve", True) and baseline > 0 and len(w) >= 3:
         smoothed = sum(w) / len(w)
-        if smoothed < config.COMPACT_TPS:
-            return "soft", f"decode slowed to {smoothed:.1f} tok/s"
+        if smoothed < baseline * frac:
+            return (
+                "soft",
+                f"decode {smoothed:.1f} tok/s < {frac:.0%} of {baseline:.1f} baseline",
+            )
     if compact_at and (input_tokens - runner.compact_floor) > compact_at:
         return "soft", f"size {input_tokens} tok"
     return "none", ""

@@ -61,6 +61,7 @@ class ToolRunner(BashToolsMixin, FileToolsMixin, ImageToolsMixin):
         self.rag = rag  # recall tool available only when True
         self.context_limit = context_limit  # model's native context window (overflow safety)
         self.tps_window: deque = deque(maxlen=4)  # recent decode tok/s, for the trigger
+        self.tps_baseline = 0.0  # learned fast/low-context decode rate (relative trigger)
         self.session: BashSession | None = None
         self.mutated = False  # any tool may have changed files this turn
         self._paths = PathResolver(workdir, sandbox=sandbox)

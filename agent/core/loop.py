@@ -341,6 +341,12 @@ def agent_turn(
             continue
         # Sample decode-rate + context size for the compaction policy and /ctx.
         runner.tps_window.append(io.last_decode_tps)
+        # Learn the model's fast/low-context baseline (peak smoothed rate) so the
+        # compaction trigger reacts to a RELATIVE slowdown, not an absolute tok/s.
+        if len(runner.tps_window) >= 2:
+            runner.tps_baseline = max(
+                runner.tps_baseline, sum(runner.tps_window) / len(runner.tps_window)
+            )
         runner.last_input_tokens = response.usage.input_tokens
         level, reason = classify_compaction(runner, response.usage.input_tokens, compact_at)
 

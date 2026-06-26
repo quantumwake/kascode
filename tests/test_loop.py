@@ -179,6 +179,7 @@ class FakeRunner:
         self.compact_floor = 0
         self.tps_valve = False  # keep classify_compaction at "none" in these tests
         self.tps_window = deque(maxlen=4)
+        self.tps_baseline = 0.0
         self.last_input_tokens = 0
         self._outputs = outputs or {}
         self.runs: list[tuple[str, dict]] = []
