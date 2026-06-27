@@ -3,7 +3,7 @@ PORT  ?= 8765
 PIDFILE := .server.pid
 LOG     := server.log
 
-.PHONY: help start start-interactive stop restart status logs perf agent test test-gpu download lint fmt typecheck cov check install doctor
+.PHONY: help start start-interactive stop restart status logs perf agent test test-gpu download lint fmt typecheck cov check install doctor smoke-test-voice
 
 help: ## show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-18s %s\n", $$1, $$2}'
@@ -106,3 +106,6 @@ install: ## install `kas` as a global CLI (uv tool)
 
 doctor: ## detect platform/GPU + report what each capability needs (ARGS="--install")
 	@uv run python scripts/doctor.py $(ARGS)
+
+smoke-test-voice: ## end-to-end voice→text test (SECS=3 mic, or SAY="text" to skip mic)
+	@SECS="$(SECS)" SAY="$(SAY)" uv run python scripts/smoke_voice.py
