@@ -4,10 +4,64 @@ Prints the chosen model id to stdout (everything else goes to stderr) so it
 composes with `make start MODEL=$(...)`.
 """
 
+import json
 import pathlib
 import sys
 
 HUB = pathlib.Path.home() / ".cache" / "huggingface" / "hub"
+
+# Model modalities. "chat" kinds (text + vision) are loadable in the /model
+# picker; the rest power their own features (or nothing) and shouldn't clutter
+# the chat selector.
+CHAT_KINDS = ("text", "vision")
+
+
+def model_kind(snap: pathlib.Path) -> str:
+    """Classify a model snapshot by what it DOES, from its config.
+
+    Returns one of: text (causal LM chat), vision (multimodal chat),
+    embedding, stt (speech->text), image (diffusion text->image), or other.
+    Keyed on config.json's `architectures` (the reliable signal); diffusers
+    pipelines use model_index.json; GGUF repos (no config) fall back to name.
+    """
+    cfg = snap / "config.json"
+    if cfg.exists():
+        try:
+            c = json.loads(cfg.read_text())
+        except (OSError, json.JSONDecodeError):
+            c = {}
+        arch = (c.get("architectures") or [""])[0]
+        mt = c.get("model_type", "")
+        is_vision = "vision_config" in c or "vision_tower" in c or "vision" in mt
+        if "Whisper" in arch or mt == "whisper":
+            return "stt"
+        if arch == "StaticModel" or mt == "model2vec":
+            return "embedding"
+        # Encoder-only (BERT/MPNet/RoBERTa) = sentence embeddings, not chat.
+        if arch.endswith("ForMaskedLM") or (
+            arch.endswith("Model")
+            and "CausalLM" not in arch
+            and "ConditionalGeneration" not in arch
+        ):
+            return "embedding"
+        if is_vision and arch.endswith(("ForConditionalGeneration", "ForCausalLM")):
+            return "vision"
+        if arch.endswith(("ForCausalLM", "LMHeadModel", "ForConditionalGeneration")):
+            return "text"
+        # GGUF-companion configs often carry model_type but no architectures.
+        if mt in (
+            "llama", "mistral", "mixtral", "qwen2", "qwen3", "qwen3_next", "qwen3_5",
+            "gemma", "gemma2", "gemma3", "phi", "phi3", "gpt_oss", "deepseek_v3",
+            "kimi_k2", "apertus", "gpt_neox", "falcon", "cohere", "command-r",
+        ):
+            return "text"
+        return "other"
+    if (snap / "model_index.json").exists():
+        return "image"  # diffusers text->image pipeline
+    # No config: GGUF weight repo (tokenizer + *.gguf) — almost always an LLM.
+    if list(snap.glob("*.gguf")):
+        return "text"
+    return "other"
 
 
 def _human(n: int) -> str:
@@ -27,8 +81,16 @@ def model_info() -> list[dict]:
     """
     out = []
     for d in sorted(HUB.glob("models--*")):
-        if not list(d.glob("snapshots/*/config.json")):
-            continue  # not a loadable model (tokenizer-only or no config)
+        snaps = sorted(d.glob("snapshots/*"))
+        snap = snaps[-1] if snaps else None
+        # Loadable = has weights/config of some kind; skip tokenizer-only dirs.
+        if snap is None or not (
+            (snap / "config.json").exists()
+            or (snap / "model_index.json").exists()
+            or list(snap.glob("*.gguf"))
+        ):
+            continue
+        kind = model_kind(snap)
         blobs = d / "blobs"
         size, partial = 0, False
         if blobs.exists():
@@ -54,13 +116,15 @@ def model_info() -> list[dict]:
                 "size": size,
                 "size_h": _human(size),
                 "complete": not partial,
+                "kind": kind,
             }
         )
     return out
 
 
-def downloaded_models() -> list[str]:
-    return [m["id"] for m in model_info()]
+def downloaded_models(kinds: tuple[str, ...] | None = CHAT_KINDS) -> list[str]:
+    """Model ids. Defaults to chat-capable (text + vision); pass kinds=None for all."""
+    return [m["id"] for m in model_info() if kinds is None or m["kind"] in kinds]
 
 
 def main() -> None:

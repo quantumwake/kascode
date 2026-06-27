@@ -42,6 +42,8 @@ class ModelSelect(ModalScreen):
         t.append(m)
         if meta:
             t.append(f"  {meta['size_h']}", style="#8a8a8a")
+            if meta.get("kind") == "vision":
+                t.append("  👁 vision", style="#79c0ff")
             if not meta["complete"]:
                 t.append("  ⏳ partial", style="#ffa657")
         return t
