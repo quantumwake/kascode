@@ -49,24 +49,34 @@ def _loudness_to_level(lufs: float) -> float:
 
 
 def record(
-    out_path: str | pathlib.Path, seconds: int = 5, on_ready=None, on_level=None
+    out_path: str | pathlib.Path,
+    seconds: int = 5,
+    on_ready=None,
+    on_level=None,
+    vad: bool = False,
 ) -> tuple[pathlib.Path | None, str]:
     """Capture the mic to `out_path`. Returns (path, "") or (None, error).
 
     on_ready() fires once the mic is hot (after the warmup lead-in); on_level(x)
     fires with x in 0..1 as the user speaks (a live meter). The recording is
-    seconds+warmup long so the lead-in doesn't eat into the user's time."""
+    seconds+warmup long so the lead-in doesn't eat into the user's time.
+
+    With vad=True, `seconds` is the MAX; the turn ends ~KAS_STT_SILENCE seconds
+    after speech stops (energy VAD off the loudness meter). We stop ffmpeg by
+    writing 'q' to its stdin so it finalizes a valid WAV (a kill would corrupt
+    the header)."""
     if shutil.which("ffmpeg") is None:
         return None, "recording needs ffmpeg (brew install ffmpeg / apt install ffmpeg)"
     warmup = float(os.environ.get("KAS_STT_WARMUP", "0.3"))
-    cmd = record_command(out_path, round(seconds + warmup, 2), meter=on_level is not None)
+    meter = on_level is not None or vad
+    cmd = record_command(out_path, round(seconds + warmup, 2), meter=meter)
     if cmd is None:
         return None, f"mic capture not wired for {platform.system()}"
 
     try:
         proc = subprocess.Popen(
             cmd,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE,  # so we can send 'q' to stop gracefully (VAD)
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
@@ -78,8 +88,21 @@ def record(
     if cue is not None:
         cue.start()
 
-    # Drain stderr in this thread: parse loudness for the meter AND keep the tail
-    # for an error message. (Draining also prevents a full-pipe deadlock.)
+    silence_hold = float(os.environ.get("KAS_STT_SILENCE", "1.2"))
+    speech_thresh = float(os.environ.get("KAS_STT_VAD_THRESH", "0.12"))
+    import time as _time
+
+    spoke = [False]
+    last_loud = [_time.monotonic() + warmup]  # don't count the warmup as silence
+
+    def _stop() -> None:
+        try:
+            if proc.stdin:
+                proc.stdin.write("q")
+                proc.stdin.flush()
+        except Exception:
+            proc.terminate()
+
     tail_lines: list[str] = []
     deadline_killer = threading.Timer(seconds + warmup + 20, proc.kill)
     deadline_killer.start()
@@ -89,13 +112,22 @@ def record(
             tail_lines.append(line)
             if len(tail_lines) > 40:
                 tail_lines.pop(0)
+            m = _M_RE.search(line)
+            if not m:
+                continue
+            level = _loudness_to_level(float(m.group(1)))
             if on_level is not None:
-                m = _M_RE.search(line)
-                if m:
-                    try:
-                        on_level(_loudness_to_level(float(m.group(1))))
-                    except Exception:
-                        pass
+                try:
+                    on_level(level)
+                except Exception:
+                    pass
+            if vad:
+                now = _time.monotonic()
+                if level >= speech_thresh:
+                    spoke[0] = True
+                    last_loud[0] = now
+                elif spoke[0] and now - last_loud[0] >= silence_hold:
+                    _stop()  # end of turn — graceful finalize
         proc.wait()
     finally:
         deadline_killer.cancel()
@@ -103,6 +135,7 @@ def record(
             cue.cancel()
 
     out = pathlib.Path(out_path)
-    if proc.returncode != 0 or not out.exists():
+    # 'q' makes ffmpeg exit 255; accept it as long as we got a file.
+    if not out.exists() or out.stat().st_size < 200:
         return None, f"recording failed (exit {proc.returncode}): {''.join(tail_lines)[-300:]}"
     return out, ""

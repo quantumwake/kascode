@@ -13,7 +13,7 @@ import types
 sys.path.insert(0, ".")
 
 if importlib.util.find_spec("PIL") is None:  # Pillow is the optional 'preview' extra
-    print("test_image_preview: skipped (Pillow not installed — pip install pillow / extra [preview])")
+    print("test_image_preview: skipped (Pillow not installed — extra [preview])")
     sys.exit(0)
 
 from PIL import Image

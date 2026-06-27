@@ -13,6 +13,7 @@ from textual.widgets import Input
 from .ai_wellbeing import AiWellbeingCommand
 from .art import ArtCommand
 from .compact import CompactCommand
+from .converse import ConverseCommand
 from .ctx import CtxCommand
 from .fx import FxCommand
 from .help import HelpCommand
@@ -59,6 +60,7 @@ REGISTRY = [
     ListenCommand(),
     ImageCommand(),
     SayCommand(),
+    ConverseCommand(),
     SandboxCommand(),
     StatusCommand(),
 ]

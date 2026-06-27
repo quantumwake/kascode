@@ -46,6 +46,7 @@ else:
 # transcribe() now goes through the persistent Transcriber (a serve-mode worker
 # subprocess). Stub the subprocess with a fake that speaks the serve protocol:
 # emits {"ready"} on spawn, then {"transcribing"}+{"done"} after a wav is written.
+import json  # noqa: E402
 import tempfile  # noqa: E402
 
 import agent.adapters.audio.transcriber as trans  # noqa: E402
@@ -67,10 +68,10 @@ class _FakeServe:
     # stdin
     def write(self, s):
         if self._error is not None:
-            self._q.append('{"event": "error", "msg": "Trace\\n%s"}\n' % self._error)
+            self._q.append(json.dumps({"event": "error", "msg": "Trace\n" + self._error}) + "\n")
         else:
             self._q.append('{"event": "transcribing", "audio_secs": 1.0}\n')
-            self._q.append('{"event": "done", "text": "%s"}\n' % self._done_text)
+            self._q.append(json.dumps({"event": "done", "text": self._done_text}) + "\n")
         return len(s)
 
     def flush(self):

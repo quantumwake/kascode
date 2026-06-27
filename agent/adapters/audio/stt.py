@@ -11,7 +11,6 @@ package or model returns an (error_message, True) pair rather than raising.
 import importlib.util
 import os
 import pathlib
-import sys
 
 DEFAULT_MODEL = os.environ.get("KAS_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
 
