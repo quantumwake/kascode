@@ -11,6 +11,7 @@ package or model returns an (error_message, True) pair rather than raising.
 import importlib.util
 import os
 import pathlib
+import sys
 
 DEFAULT_MODEL = os.environ.get("KAS_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
 
@@ -64,30 +65,43 @@ def _load_wav_16k_mono(path: pathlib.Path):
     return audio
 
 
-def transcribe(audio_path: str | pathlib.Path, model: str | None = None) -> tuple[str, bool]:
-    """Transcribe an audio file. Returns (text, is_error)."""
+# One warm worker process per kas session, created on first use (or preload()).
+_TRANSCRIBER = None
+_TRANSCRIBER_LOCK = __import__("threading").Lock()
+
+
+def _transcriber(model: str | None = None):
+    from .transcriber import Transcriber
+
+    global _TRANSCRIBER
+    want = model or DEFAULT_MODEL
+    with _TRANSCRIBER_LOCK:
+        if _TRANSCRIBER is None or _TRANSCRIBER.model != want:
+            if _TRANSCRIBER is not None:
+                _TRANSCRIBER.stop()
+            _TRANSCRIBER = Transcriber(want)
+        return _TRANSCRIBER
+
+
+def preload(model: str | None = None) -> tuple[bool, str]:
+    """Start the warm worker + load the model now (call when voice is activated),
+    so the first /listen doesn't pay the load. Returns (ok, message)."""
+    if not whisper_available():
+        return False, _missing_hint()
+    return _transcriber(model).preload()
+
+
+def transcribe(
+    audio_path: str | pathlib.Path,
+    model: str | None = None,
+    on_progress=None,
+) -> tuple[str, bool]:
+    """Transcribe an audio file via the warm, isolated worker. Returns
+    (text, is_error). on_progress(event: dict) fires per streamed worker event
+    (loading / transcribing) so callers can show movement."""
     if not whisper_available():
         return _missing_hint(), True
     p = pathlib.Path(audio_path)
     if not p.exists():
         return f"no audio file at {p}", True
-    # Decode to samples OURSELVES and hand whisper the array. We NEVER pass a
-    # path: given one, mlx-whisper forks ffmpeg, which fails with
-    # "bad value(s) in fds_to_keep" from the TUI's worker thread. So a wav we
-    # can't decode is a clean error here, not a fall-through to that subprocess.
-    try:
-        audio = _load_wav_16k_mono(p)
-    except Exception as exc:
-        return f"couldn't read audio {p.name}: {type(exc).__name__}: {exc}", True
-    if audio is None:
-        return f"unsupported audio format in {p.name} (need a PCM WAV)", True
-    if len(audio) == 0:
-        return "no audio captured (is the mic permitted? check System Settings → Microphone)", True
-
-    import mlx_whisper
-
-    try:
-        result = mlx_whisper.transcribe(audio, path_or_hf_repo=model or DEFAULT_MODEL)
-    except Exception as exc:  # model load failures shouldn't crash the app
-        return f"transcription failed: {type(exc).__name__}: {exc}", True
-    return (result.get("text") or "").strip(), False
+    return _transcriber(model).transcribe(str(p), on_progress=on_progress)

@@ -4,12 +4,17 @@
 Run:  uv run python tests/test_image_preview.py
 """
 
+import importlib.util
 import pathlib
 import sys
 import tempfile
 import types
 
 sys.path.insert(0, ".")
+
+if importlib.util.find_spec("PIL") is None:  # Pillow is the optional 'preview' extra
+    print("test_image_preview: skipped (Pillow not installed — pip install pillow / extra [preview])")
+    sys.exit(0)
 
 from PIL import Image
 

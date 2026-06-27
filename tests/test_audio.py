@@ -43,36 +43,76 @@ else:
     assert is_err and "no audio file" in text, (text, is_err)
     print("transcribe missing-file: OK")
 
-# A successful transcription is plumbed through (mock mlx_whisper).
-import types  # noqa: E402
-
-# mlx_whisper now receives SAMPLES (an ndarray), never a path — assert that.
-import wave as _wave  # noqa: E402
-
-import numpy as _np  # noqa: E402
-
-_seen = {}
-
-
-def _fake_transcribe(audio, path_or_hf_repo=None):
-    _seen["audio"] = audio
-    return {"text": "  hello world "}
-
-
-sys.modules["mlx_whisper"] = types.SimpleNamespace(transcribe=_fake_transcribe)
-stt.importlib.util.find_spec = lambda name: object() if name == "mlx_whisper" else None
+# transcribe() now goes through the persistent Transcriber (a serve-mode worker
+# subprocess). Stub the subprocess with a fake that speaks the serve protocol:
+# emits {"ready"} on spawn, then {"transcribing"}+{"done"} after a wav is written.
 import tempfile  # noqa: E402
 
+import agent.adapters.audio.transcriber as trans  # noqa: E402
+
+stt.importlib.util.find_spec = lambda name: object() if name == "mlx_whisper" else None
 wav = tempfile.mktemp(suffix=".wav")
-with _wave.open(wav, "wb") as _w:  # a real 16 kHz mono PCM wav (so it decodes)
-    _w.setnchannels(1)
-    _w.setsampwidth(2)
-    _w.setframerate(16000)
-    _w.writeframes((_np.zeros(1600, dtype=_np.int16)).tobytes())
-text, is_err = stt.transcribe(wav)
-assert not is_err and text == "hello world", (text, is_err)
-assert isinstance(_seen["audio"], _np.ndarray), "whisper must get samples, not a path"
-print("transcribe success (mocked, array path): OK")
+open(wav, "wb").close()
+
+
+class _FakeServe:
+    """Acts as the Popen handle AND its stdin/stdout: ready first, then a
+    transcript per wav written to stdin."""
+
+    def __init__(self, done_text="  hello world ", error=None):
+        self._done_text, self._error = done_text, error
+        self._q = ['{"event": "ready"}\n']
+        self.returncode = None
+
+    # stdin
+    def write(self, s):
+        if self._error is not None:
+            self._q.append('{"event": "error", "msg": "Trace\\n%s"}\n' % self._error)
+        else:
+            self._q.append('{"event": "transcribing", "audio_secs": 1.0}\n')
+            self._q.append('{"event": "done", "text": "%s"}\n' % self._done_text)
+        return len(s)
+
+    def flush(self):
+        pass
+
+    # process handle
+    def poll(self):
+        return None  # alive
+
+    def kill(self):
+        self.returncode = -9
+
+    # streams (stdin and stdout are both this object)
+    stdin = property(lambda self: self)
+    stdout = property(lambda self: self)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._q:
+            return self._q.pop(0)
+        raise StopIteration
+
+
+stt._TRANSCRIBER = None
+_orig_trans_popen = trans.subprocess.Popen
+trans.subprocess.Popen = lambda *a, **k: _FakeServe()
+try:
+    seen = []
+    text, is_err = stt.transcribe(wav, on_progress=lambda e: seen.append(e["event"]))
+    assert not is_err and text == "hello world", (text, is_err)
+    assert seen == ["transcribing"], seen  # ready consumed at spawn; done at end
+    # a worker error surfaces with the last traceback line
+    stt._TRANSCRIBER = None
+    trans.subprocess.Popen = lambda *a, **k: _FakeServe(error="ValueError: boom")
+    text, is_err = stt.transcribe(wav)
+    assert is_err and "boom" in text, (text, is_err)
+finally:
+    stt._TRANSCRIBER = None
+    trans.subprocess.Popen = _orig_trans_popen  # restore (it's the global module)
+print("transcribe via warm worker (stubbed): OK")
 
 
 # --- text→voice (TTS) -------------------------------------------------------
