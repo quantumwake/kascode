@@ -29,11 +29,24 @@ class WorkerLoops:
         return ""
 
     def _speak_last_reply(self, messages: list) -> None:
+        import threading
+
         from ..adapters.audio import tts
 
         text = self._reply_text(messages)
-        if text.strip():
-            tts.speak(text)
+        if not text.strip():
+            return
+        msg, err = tts.speak(text)
+        if err:
+            return
+        # Show a speaking indicator for as long as the utterance runs, then release.
+        self.voice_indicator("speaking", conn="🔊 speaking", work="reply")
+
+        def watch() -> None:
+            tts.wait()
+            self.voice_indicator(None)
+
+        threading.Thread(target=watch, daemon=True).start()
 
     def _agent_loop(self) -> None:
         messages = self.messages
@@ -192,6 +205,11 @@ class WorkerLoops:
                 )  # violet
             else:
                 conn, conn_style, work, mode = "● live", "#3fb950", "idle", "idle"  # green
+            # A voice op (/listen, /say) takes over the live indicator while active,
+            # so the once-a-second poll doesn't reset it back to idle mid-record.
+            if self.fx_override is not None:
+                o = self.fx_override
+                conn, conn_style, work, mode = o["conn"], o["style"], o["work"], o["mode"]
             self.fx_mode = mode  # drive the ambient FxBar animation by current state
             self.fx_stats = {
                 "tps": s.get("tps"),

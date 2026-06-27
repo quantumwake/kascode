@@ -155,6 +155,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self.busy = False
         self.fx_mode = "idle"  # current state, drives the ambient FxBar animation
         self.fx_stats: dict = {}  # live tps/processed/total for data-driven fx
+        self.fx_override: dict | None = None  # voice op owns the indicator while active
         self.tok_in = 0  # cumulative session prompt tokens (for /stats)
         self.tok_out = 0  # cumulative session generated tokens
         self.tok_cache_read = 0  # cumulative cache-read (reused prompt) tokens
@@ -241,6 +242,25 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
                 style="magenta",
             )
         )
+
+    def voice_indicator(self, mode: str | None, conn: str = "", work: str = "") -> None:
+        """Take over (or release) the live status indicator for a voice op.
+
+        mode is one of the FxBar voice palettes (listening/transcribing/speaking)
+        or None to release control back to the server-status poller. Sets fx_mode
+        immediately so the bar reacts without waiting for the 1 s poll; safe to
+        call from a worker thread (attribute writes only)."""
+        style = {"listening": "#39e85a", "transcribing": "#ffa657", "speaking": "#ff5fd0"}
+        if mode is None:
+            self.fx_override = None
+            return
+        self.fx_override = {
+            "mode": mode,
+            "conn": conn or f"♪ {mode}",
+            "style": style.get(mode, "#39e85a"),
+            "work": work,
+        }
+        self.fx_mode = mode  # immediate, so the animation switches at once
 
     def user_content(self, task: str):
         """Build the next user turn's content. With staged images (drag-drop or

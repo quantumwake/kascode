@@ -51,6 +51,17 @@ def stop() -> None:
     _proc = None
 
 
+def wait() -> None:
+    """Block until the current utterance finishes (or is stopped). For driving a
+    'speaking' indicator off-thread — never call it on the UI thread."""
+    proc = _proc
+    if proc is not None:
+        try:
+            proc.wait()
+        except Exception:
+            pass
+
+
 def speak(text: str) -> tuple[str, bool]:
     """Speak `text` in the background (non-blocking). Returns ("", False) on
     success or (message, True) when no engine is available."""

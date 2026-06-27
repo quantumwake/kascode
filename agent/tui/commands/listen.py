@@ -8,7 +8,7 @@ from rich.text import Text
 from textual.widgets import Input
 
 from ...adapters.audio.record import record
-from ...adapters.audio.stt import DEFAULT_MODEL, transcribe, whisper_available
+from ...adapters.audio.stt import transcribe, whisper_available
 from .base import Command
 
 
@@ -34,15 +34,24 @@ class ListenCommand(Command):
             return
         secs = int(arg) if arg.strip().isdigit() else 5
         secs = max(1, min(secs, 120))
-        app.body_write(Text(f"🎙  listening for {secs}s… (model: {DEFAULT_MODEL})", style="cyan"))
+        app.body_write(Text(f"🎙  listening for {secs}s…", style="cyan"))
+        app.voice_indicator("listening", conn="🎙 listening", work=f"{secs}s")
 
         def worker() -> None:
             wav = pathlib.Path(tempfile.mktemp(suffix=".wav"))
             path, err = record(wav, secs)
             if err:
+                app.voice_indicator(None)
                 self._note(app, err, "red")
                 return
+            # First run pulls the whisper model (silent + slow), so say so.
+            from ...adapters.audio.stt import model_present
+
+            note = "transcribing…" if model_present() else "downloading whisper model (first run)…"
+            app.voice_indicator("transcribing", conn="🎧 transcribing", work=note)
+            self._note(app, f"🎧 {note}", "cyan")
             text, is_err = transcribe(path)
+            app.voice_indicator(None)  # release the indicator
             try:
                 path.unlink()
             except OSError:

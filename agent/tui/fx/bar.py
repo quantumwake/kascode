@@ -31,6 +31,9 @@ class FxBar(FxEffects, Static):
         "generating": ["#06363b", "#0a6b74", "#1aa6b3", "#39d3e8", "#9af2ff"],  # cyan
         "tools": ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
         "offline": ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
+        "listening": ["#06340a", "#0a7a1a", "#1aa82a", "#39e85a", "#9affb0"],  # green (mic in)
+        "transcribing": ["#3a1e00", "#7a3d00", "#b85c00", "#ffa657", "#ffd0a0"],  # orange (working)
+        "speaking": ["#3a0a2a", "#7a1d5a", "#c02d90", "#ff5fd0", "#ffb0ec"],  # magenta (voice out)
     }
     # Colour schemes the rotating states cycle through. Most are MULTI-HUE mixes
     # (red/orange/yellow/green/blue/white together) so the bar bursts with colour,
@@ -113,11 +116,18 @@ class FxBar(FxEffects, Static):
             "meteor",
         ),
         "offline": ("flat",),
+        # voice states: equalizer-style for audio in/out, a working wave for STT
+        "listening": ("vu", "spectrum", "symbars"),
+        "transcribing": ("wave", "braille", "scanline"),
+        "speaking": ("vu", "ladder", "spectrum"),
     }
     # Per-mode animation speed (float step added to self._t each tick). idle drifts
     # SLOWLY (calm/ambient); working states race so the difference reads at a glance.
     # Scaled by self._speed (/fx speed).
-    MODE_SPEED = {"idle": 0.22, "prefill": 1.0, "generating": 2.0, "tools": 1.6, "offline": 0.18}
+    MODE_SPEED = {
+        "idle": 0.22, "prefill": 1.0, "generating": 2.0, "tools": 1.6, "offline": 0.18,
+        "listening": 1.8, "transcribing": 1.4, "speaking": 1.8,
+    }
     # /fx speed presets -> the global multiplier applied to MODE_SPEED.
     SPEED_PRESETS = {"slow": 0.4, "normal": 1.0, "fast": 1.8, "turbo": 3.0}
     # Named colour themes for `/theme <name>` — pins the whole bar to one palette
