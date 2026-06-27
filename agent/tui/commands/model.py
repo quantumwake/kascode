@@ -1,6 +1,7 @@
 """/model [<id>|<n>] — show the model picker, or hot-swap by id/number."""
 
 import threading
+import time
 
 import httpx
 from rich.text import Text
@@ -61,7 +62,31 @@ class ModelCommand(Command):
             )
         )
 
+        # Live loading indicator: a big model (tens of GB) loads for a minute+
+        # with no other signal, so the swap LOOKS frozen. Drive the progress-bar
+        # fx + an elapsed counter until the (synchronous) load returns.
+        done = threading.Event()
+        t0 = time.monotonic()
+        short = target.split("/")[-1]
+
+        def loading_fx() -> None:
+            while not done.wait(1.0):
+                el = int(time.monotonic() - t0)
+                app.fx_override = {
+                    "mode": "prefill",  # the progress-bar animation
+                    "conn": "⟳ loading model",
+                    "style": "#ffa657",
+                    "work": f"{short} · {el}s (large models take a minute+)",
+                }
+
         def do_swap() -> None:
+            app.fx_override = {
+                "mode": "prefill",
+                "conn": "⟳ loading model",
+                "style": "#ffa657",
+                "work": f"{short} · 0s",
+            }
+            threading.Thread(target=loading_fx, daemon=True).start()
             try:
                 resp = httpx.post(
                     app.base_url.rstrip("/") + "/v1/models/select",
@@ -74,11 +99,15 @@ class ModelCommand(Command):
                     # relative compaction trigger re-learns it.
                     app.runner.tps_baseline = 0.0
                     app.runner.tps_window.clear()
-                    note = f"[now serving {resp['model']} (dialect: {resp.get('dialect')})]"
+                    el = int(time.monotonic() - t0)
+                    note = f"[now serving {resp['model']} (dialect: {resp.get('dialect')}) · {el}s]"
                 else:
                     note = f"[swap failed: {resp.get('error', {}).get('message', resp)}]"
             except Exception as exc:
                 note = f"[swap failed: {exc}]"
+            finally:
+                done.set()
+                app.fx_override = None  # release the indicator
             try:
                 app.call_from_thread(app.body_write, Text(note, style="yellow"))
             except Exception:
