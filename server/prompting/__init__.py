@@ -9,6 +9,14 @@ working unchanged.
 from .dialects import GemmaDialect, QwenDialect, _coerce, detect_dialect
 from .gemma_args import _parse_value, parse_tool_call_body, render_tool_response
 from .parser import StreamParser, _safe_len
+from .standard_dialects import (
+    DeepSeekDialect,
+    HarmonyDialect,
+    HermesDialect,
+    KimiDialect,
+    LlamaDialect,
+    MistralDialect,
+)
 from .translate import (
     _system_text,
     _tool_result_text,
@@ -30,6 +38,12 @@ from .wire import (
 __all__ = [
     "GemmaDialect",
     "QwenDialect",
+    "HermesDialect",
+    "LlamaDialect",
+    "MistralDialect",
+    "DeepSeekDialect",
+    "KimiDialect",
+    "HarmonyDialect",
     "detect_dialect",
     "parse_tool_call_body",
     "render_tool_response",

@@ -95,7 +95,7 @@ class LlamaCppEngine:
         self._chat_template = meta.get("tokenizer.chat_template")
         self.context_length = int(getattr(self._llm, "n_ctx", lambda: n_ctx)())
         self.n_layers = n_gpu_layers if n_gpu_layers >= 0 else None
-        self.dialect = detect_dialect(self._chat_template)
+        self.dialect = detect_dialect(self._chat_template, self.model_id)
         log.info("loaded in %.1fs (dialect: %s)", time.time() - t0, self.dialect.name)
 
     # --- tokenization --------------------------------------------------------

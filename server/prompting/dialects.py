@@ -15,7 +15,9 @@ on any divergence, so the server appends new-turn wire bytes directly to the
 cached token stream instead of re-rendering history.
 """
 
+import fnmatch
 import json
+import os
 import re
 from typing import Any
 
@@ -154,8 +156,115 @@ def _coerce(value: str, schema_type: str | None) -> Any:
     return value
 
 
-def detect_dialect(chat_template: str | None):
-    template = chat_template or ""
-    if "<function=" in template or "<|im_start|>" in template:
-        return QwenDialect()
-    return GemmaDialect()  # default; gemma markers simply won't fire elsewhere
+def dialect_registry() -> dict:
+    """name -> dialect class. Includes aliases (vLLM's parser names) so an
+    override file can pin by any common spelling."""
+    from .standard_dialects import (
+        DeepSeekDialect,
+        HarmonyDialect,
+        HermesDialect,
+        KimiDialect,
+        LlamaDialect,
+        MistralDialect,
+    )
+
+    return {
+        "gemma": GemmaDialect,
+        "harmony": HarmonyDialect,
+        "gpt-oss": HarmonyDialect,
+        "qwen": QwenDialect,
+        "qwen-xml": QwenDialect,
+        "hermes": HermesDialect,
+        "hermes-json": HermesDialect,
+        "chatml": HermesDialect,
+        "llama": LlamaDialect,
+        "llama-json": LlamaDialect,
+        "llama3_json": LlamaDialect,
+        "mistral": MistralDialect,
+        "deepseek": DeepSeekDialect,
+        "deepseek_v3": DeepSeekDialect,
+        "kimi": KimiDialect,
+        "kimi-k2": KimiDialect,
+        "kimi_k2": KimiDialect,
+    }
+
+
+# Default override file. {"glob-on-model-id": "dialect-name", ...}; first match
+# wins. Lets a user pin a model that auto-detects wrong without code changes.
+OVERRIDES_PATH = os.path.expanduser("~/.kascode/dialects.json")
+
+
+def _load_overrides(path: str | None = None) -> dict[str, str]:
+    path = path or OVERRIDES_PATH
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    # Accept either {"overrides": {...}} or a bare {pattern: name} mapping.
+    over = data.get("overrides", data) if isinstance(data, dict) else {}
+    return {str(k): str(v) for k, v in over.items()} if isinstance(over, dict) else {}
+
+
+def detect_dialect(chat_template: str | None, model_id: str | None = None):
+    """Pick the output dialect for a model.
+
+    Layered, most-authoritative first:
+      1. user override file (~/.kascode/dialects.json) — glob on model id
+      2. template markers — the strongest automatic signal
+      3. model-id heuristics — for empty/unreadable templates (common for GGUF,
+         whose template lives inside the .gguf)
+      4. default (gemma)
+    Within tiers, order is by specificity (Qwen XML's <function= before the
+    generic ChatML <tool_call>).
+    """
+    registry = dialect_registry()
+    t = chat_template or ""
+    mid = (model_id or "").lower()
+
+    # 1) User overrides (glob on model id).
+    for pattern, name in _load_overrides().items():
+        cls = registry.get(name.lower())
+        if cls and mid and fnmatch.fnmatch(mid, pattern.lower()):
+            return cls()
+
+    # 2) Template markers (most reliable).
+    if "[TOOL_CALLS]" in t:
+        return registry["mistral"]()
+    if "tool▁calls▁begin" in t or "tool▁call▁begin" in t:
+        return registry["deepseek"]()
+    if "tool_calls_section_begin" in t or "tool_call_begin" in t:
+        return registry["kimi"]()
+    if "<|python_tag|>" in t:
+        return registry["llama"]()
+    if "<|channel|>" in t:  # harmony: trailing pipe (gemma's is "<|channel>")
+        return registry["harmony"]()
+    if "<|channel>" in t:
+        return registry["gemma"]()
+    if "<function=" in t:
+        return registry["qwen"]()  # Qwen XML form (qwen3-coder, qwen3.6)
+    if "<tool_call>" in t:
+        return registry["hermes"]()  # ChatML JSON (qwen3-next, qwen2.5, hermes)
+
+    # 3) Model-id fallback (empty/unreadable template — common for GGUF).
+    if "gemma" in mid:
+        return registry["gemma"]()
+    if "gpt-oss" in mid or "gpt_oss" in mid:
+        return registry["harmony"]()
+    if "kimi" in mid:
+        return registry["kimi"]()
+    if "deepseek" in mid:
+        return registry["deepseek"]()
+    if any(k in mid for k in ("mistral", "mixtral", "magistral", "devstral", "ministral")):
+        return registry["mistral"]()
+    if any(k in mid for k in ("llama", "tulu")):
+        return registry["llama"]()
+    if "coder" in mid and "qwen" in mid:
+        return registry["qwen"]()  # qwen3-coder uses the XML form even with no template
+    if any(k in mid for k in ("qwen", "hermes", "nous", "yi")):
+        return registry["hermes"]()
+
+    # 4) Generic ChatML with no tool marker -> Hermes JSON (the common default).
+    if "<|im_start|>" in t:
+        return registry["hermes"]()
+    return registry["gemma"]()  # final fallback

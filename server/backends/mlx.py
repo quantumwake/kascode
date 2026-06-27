@@ -168,7 +168,9 @@ class MlxEngine:
             self.n_layers = len(self._make_prompt_cache(self.model))  # one cache per layer
         except Exception:
             self.n_layers = None
-        self.dialect = detect_dialect(getattr(self.tokenizer, "chat_template", None))
+        self.dialect = detect_dialect(
+            getattr(self.tokenizer, "chat_template", None), self.model_id
+        )
         self._slots = {}
         self._slot_order = []
         log.info("model loaded in %.1fs (dialect: %s)", time.time() - t0, self.dialect.name)
