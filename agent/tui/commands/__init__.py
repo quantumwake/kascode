@@ -22,6 +22,7 @@ from .model import ModelCommand
 from .pause import PauseCommand
 from .sandbox import SandboxCommand
 from .self_skill import SelfSkillCommand
+from .show import ShowCommand
 from .spec import SpecCommand
 from .stats import StatsCommand
 from .status import StatusCommand
@@ -51,6 +52,7 @@ REGISTRY = [
     CtxCommand(),
     KvCommand(),
     ArtCommand(),
+    ShowCommand(),
     SandboxCommand(),
     StatusCommand(),
 ]
