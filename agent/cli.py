@@ -391,6 +391,10 @@ def main() -> None:
         from scripts.doctor import main as doctor_main
 
         sys.exit(doctor_main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "models":
+        from scripts.models import main as models_main
+
+        sys.exit(models_main(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "agent":
         del sys.argv[1]  # strip so the agent parser sees the rest
 
