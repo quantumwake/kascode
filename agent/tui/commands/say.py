@@ -14,10 +14,16 @@ class SayCommand(Command):
         ("on", "speak replies"),
         ("off", "stop speaking replies"),
         ("stop", "cut off the current utterance"),
+        ("install", "install mlx-audio for neural voices (native say/espeak work already)"),
     )
 
     def run(self, app, arg: str) -> None:
         arg = arg.strip().lower()
+        if arg == "install":
+            from ._install import install_capability
+
+            install_capability(app, "tts-neural")
+            return
         if arg == "stop":
             tts.stop()
             app.body_write(Text("[speech stopped]", style="cyan"))

@@ -239,6 +239,37 @@ def cap_status(cap: dict, env: dict) -> dict:
     }
 
 
+def capability_install_command(
+    cap_id: str, env: dict | None = None
+) -> tuple[list[str] | None, str]:
+    """Build the pip/uv argv to install ONE capability's Python packages on this
+    host (so a feature can offer `/<cmd> install`, like `/memory install`).
+
+    Returns (argv, note) on success — note flags any native tool the feature also
+    needs (those aren't pip-installable; we hint, not run sudo). Returns
+    (None, reason) when the capability is unknown, native-only, or unsupported
+    here. Targets sys.executable so it works for a dev checkout AND the global
+    `kas` tool's env.
+    """
+    env = env or probe_env()
+    cap = next((c for c in CAPS if c["id"] == cap_id), None)
+    if cap is None:
+        return None, f"unknown capability {cap_id!r}"
+    if not applies(cap, env):
+        return None, f"{cap['label']} isn't supported on {env['os']}/{env['arch']} ({env['gpu']})"
+    if not cap["pkgs"]:
+        return None, f"{cap['label']} uses a native tool, not a pip package"
+    missing_tools = [
+        ("native-tts" if t == "__native_tts__" else t)
+        for t in cap["tools"]
+        if not _tool_present(t, env)
+    ]
+    note = f" — also needs {', '.join(missing_tools)} (install separately)" if missing_tools else ""
+    if shutil.which("uv"):
+        return ["uv", "pip", "install", "--python", sys.executable, *cap["pkgs"]], note
+    return [sys.executable, "-m", "pip", "install", *cap["pkgs"]], note
+
+
 def _editable_checkout() -> bool:
     """Are we running inside the kas source tree (dev) vs an installed tool?"""
     try:

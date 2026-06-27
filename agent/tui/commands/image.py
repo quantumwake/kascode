@@ -20,10 +20,16 @@ IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".heic")
 class ImageCommand(Command):
     name = "/image"
     summary = "attach an image to the next message (path, or clipboard on macOS)"
-    usage = "[<path>]"
+    usage = "[<path>|install]"
+    subcommands = (("install", "install mlx-vlm for image→text (vision models)"),)
 
     def run(self, app, arg: str) -> None:
         arg = arg.strip()
+        if arg.lower() == "install":
+            from ._install import install_capability
+
+            install_capability(app, "vision")
+            return
         path = self._from_clipboard(app) if not arg else pathlib.Path(arg).expanduser()
         if path is None:
             return

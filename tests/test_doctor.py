@@ -117,4 +117,26 @@ finally:
     _pf.system, _pf.machine, doctor.shutil.which = orig_sys, orig_mach, orig_which
 print("detect_gpu(): OK")
 
+# --- capability_install_command(): one-capability pip argv (for `/x install`) ---
+orig_tool = doctor._tool_present
+try:
+    cmd, note = doctor.capability_install_command("vision", env(gpu="metal"))
+    assert cmd and "mlx-vlm" in cmd and cmd[0] in ("uv", sys.executable), (cmd, note)
+    # native tool the feature also needs is flagged (not pip-installed) when absent
+    doctor._tool_present = lambda t, e: False
+    _, note = doctor.capability_install_command("voice", env(gpu="metal"))
+    assert "ffmpeg" in note, note
+    doctor._tool_present = orig_tool
+    # unsupported platform / native-only capability -> no command, a reason
+    cmd, err = doctor.capability_install_command("vision", env(os="Linux", gpu="cuda"))
+    assert cmd is None and "supported" in err, (cmd, err)
+    cmd, err = doctor.capability_install_command("tts-native", env(gpu="metal"))
+    assert cmd is None and "native" in err, (cmd, err)
+    # cross-platform cap installs anywhere
+    cmd, _ = doctor.capability_install_command("image-preview", env(os="Linux", gpu="cpu"))
+    assert cmd and "pillow" in cmd, cmd
+finally:
+    doctor._tool_present = orig_tool
+print("capability_install_command(): OK")
+
 print("all doctor tests passed")

@@ -12,10 +12,16 @@ from .base import Command
 class ShowCommand(Command):
     name = "/show"
     summary = "preview an image inline (half-block render) or open it externally"
-    usage = "<path> [open]"
+    usage = "<path> [open]|install"
+    subcommands = (("install", "install Pillow for inline image preview"),)
 
     def run(self, app, arg: str) -> None:
         parts = arg.strip().split()
+        if parts[:1] == ["install"]:
+            from ._install import install_capability
+
+            install_capability(app, "image-preview")
+            return
         if not parts:
             app.body_write(Text("usage: /show <path> [open]", style="yellow"))
             return
@@ -40,8 +46,8 @@ class ShowCommand(Command):
         if not pillow_available():
             app.body_write(
                 Text(
-                    f"inline preview needs Pillow (uv add pillow); try `/show {rel} open`. "
-                    f"file: {path}",
+                    f"inline preview needs Pillow — run `/show install` "
+                    f"(or `/show {rel} open` to use the system viewer). file: {path}",
                     style="yellow",
                 )
             )

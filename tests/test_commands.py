@@ -156,4 +156,26 @@ sent = app.msg_q.get_nowait()
 assert "use this" in sent and "pasted blob" in sent
 print("paste attach: OK")
 
+# each gated modality command routes its `install` subcommand to the shared
+# capability installer (like /memory install) — mirror the /memory UX.
+import agent.tui.commands._install as _inst  # noqa: E402
+from agent.tui.commands.image import ImageCommand  # noqa: E402
+from agent.tui.commands.listen import ListenCommand  # noqa: E402
+from agent.tui.commands.say import SayCommand  # noqa: E402
+from agent.tui.commands.show import ShowCommand  # noqa: E402
+
+_installed: list = []
+_inst.install_capability = lambda app, cap: _installed.append(cap)
+_app = FakeApp()
+for command, cap in (
+    (ListenCommand(), "voice"),
+    (ImageCommand(), "vision"),
+    (SayCommand(), "tts-neural"),
+    (ShowCommand(), "image-preview"),
+):
+    _installed.clear()
+    command.run(_app, "install")
+    assert _installed == [cap], (type(command).__name__, _installed, cap)
+print("modality `install` routing: OK")
+
 print("all command tests passed")

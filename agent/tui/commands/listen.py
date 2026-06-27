@@ -15,13 +15,19 @@ from .base import Command
 class ListenCommand(Command):
     name = "/listen"
     summary = "record from the mic and transcribe to the input box (voice→text)"
-    usage = "[seconds]"
+    usage = "[seconds|install]"
+    subcommands = (("install", "install mlx-whisper for voice→text"),)
 
     def run(self, app, arg: str) -> None:
+        if arg.strip().lower() == "install":
+            from ._install import install_capability
+
+            install_capability(app, "voice")
+            return
         if not whisper_available():
             app.body_write(
                 Text(
-                    "voice→text needs mlx-whisper (uv add mlx-whisper) on Apple Silicon",
+                    "voice→text needs mlx-whisper — run `/listen install` (Apple Silicon)",
                     style="yellow",
                 )
             )
