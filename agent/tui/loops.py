@@ -239,8 +239,16 @@ class WorkerLoops:
                 line.append(f" · {self._token_summary()}", style="#c792ea")
             try:
                 self.call_from_thread(self.update_status, line)
-                if self.stats_on:
-                    self.call_from_thread(self._update_topstats, self._stats_line(s))
             except Exception:
-                return
+                if not self._alive:
+                    return  # app torn down — exit the thread
+            if self.stats_on:
+                # Render the panel in its OWN guard: a transient stats-render error
+                # must not kill the whole status loop (which would freeze the bar
+                # AND the panel). Only a real teardown ends it.
+                try:
+                    self.call_from_thread(self._update_topstats, self._stats_line(s))
+                except Exception:
+                    if not self._alive:
+                        return
             time.sleep(1.0)
