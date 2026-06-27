@@ -35,7 +35,16 @@ def record(out_path: str | pathlib.Path, seconds: int = 5) -> tuple[pathlib.Path
     if cmd is None:
         return None, f"mic capture not wired for {platform.system()}"
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=seconds + 20)
+        # stdin=DEVNULL: ffmpeg's avfoundation reads no stdin, and giving it a
+        # clean fd avoids inheriting the TUI thread's std fds (the same class of
+        # issue that breaks subprocess forks from inside Textual).
+        proc = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=seconds + 20,
+        )
     except subprocess.TimeoutExpired:
         return None, "recording timed out"
     out = pathlib.Path(out_path)

@@ -71,18 +71,23 @@ def transcribe(audio_path: str | pathlib.Path, model: str | None = None) -> tupl
     p = pathlib.Path(audio_path)
     if not p.exists():
         return f"no audio file at {p}", True
+    # Decode to samples OURSELVES and hand whisper the array. We NEVER pass a
+    # path: given one, mlx-whisper forks ffmpeg, which fails with
+    # "bad value(s) in fds_to_keep" from the TUI's worker thread. So a wav we
+    # can't decode is a clean error here, not a fall-through to that subprocess.
+    try:
+        audio = _load_wav_16k_mono(p)
+    except Exception as exc:
+        return f"couldn't read audio {p.name}: {type(exc).__name__}: {exc}", True
+    if audio is None:
+        return f"unsupported audio format in {p.name} (need a PCM WAV)", True
+    if len(audio) == 0:
+        return "no audio captured (is the mic permitted? check System Settings → Microphone)", True
+
     import mlx_whisper
 
     try:
-        # Hand samples (not a path) to skip mlx-whisper's internal ffmpeg subprocess.
-        audio = None
-        try:
-            audio = _load_wav_16k_mono(p)
-        except Exception:
-            audio = None  # unreadable/compressed WAV -> let mlx-whisper try the path
-        result = mlx_whisper.transcribe(
-            audio if audio is not None else str(p), path_or_hf_repo=model or DEFAULT_MODEL
-        )
-    except Exception as exc:  # model load / decode failures shouldn't crash the app
+        result = mlx_whisper.transcribe(audio, path_or_hf_repo=model or DEFAULT_MODEL)
+    except Exception as exc:  # model load failures shouldn't crash the app
         return f"transcription failed: {type(exc).__name__}: {exc}", True
     return (result.get("text") or "").strip(), False

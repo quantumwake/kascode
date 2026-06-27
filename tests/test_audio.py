@@ -46,18 +46,33 @@ else:
 # A successful transcription is plumbed through (mock mlx_whisper).
 import types  # noqa: E402
 
-fake = types.SimpleNamespace(
-    transcribe=lambda path, path_or_hf_repo=None: {"text": "  hello world "}
-)
-sys.modules["mlx_whisper"] = fake
+# mlx_whisper now receives SAMPLES (an ndarray), never a path — assert that.
+import wave as _wave  # noqa: E402
+
+import numpy as _np  # noqa: E402
+
+_seen = {}
+
+
+def _fake_transcribe(audio, path_or_hf_repo=None):
+    _seen["audio"] = audio
+    return {"text": "  hello world "}
+
+
+sys.modules["mlx_whisper"] = types.SimpleNamespace(transcribe=_fake_transcribe)
 stt.importlib.util.find_spec = lambda name: object() if name == "mlx_whisper" else None
 import tempfile  # noqa: E402
 
 wav = tempfile.mktemp(suffix=".wav")
-open(wav, "wb").close()
+with _wave.open(wav, "wb") as _w:  # a real 16 kHz mono PCM wav (so it decodes)
+    _w.setnchannels(1)
+    _w.setsampwidth(2)
+    _w.setframerate(16000)
+    _w.writeframes((_np.zeros(1600, dtype=_np.int16)).tobytes())
 text, is_err = stt.transcribe(wav)
 assert not is_err and text == "hello world", (text, is_err)
-print("transcribe success (mocked): OK")
+assert isinstance(_seen["audio"], _np.ndarray), "whisper must get samples, not a path"
+print("transcribe success (mocked, array path): OK")
 
 
 # --- text→voice (TTS) -------------------------------------------------------
