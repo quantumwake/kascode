@@ -121,7 +121,9 @@ print("detect_gpu(): OK")
 orig_tool = doctor._tool_present
 try:
     cmd, note = doctor.capability_install_command("vision", env(gpu="metal"))
-    assert cmd and "mlx-vlm" in cmd and cmd[0] in ("uv", sys.executable), (cmd, note)
+    # env-aware persisting install (uv add / uv tool / uv pip), markered for Apple
+    assert cmd and cmd[0] == "uv" and any("mlx-vlm" in part for part in cmd), (cmd, note)
+    assert any("platform_machine" in part for part in cmd), cmd  # Apple marker
     # native tool the feature also needs is flagged (not pip-installed) when absent
     doctor._tool_present = lambda t, e: False
     _, note = doctor.capability_install_command("voice", env(gpu="metal"))
@@ -132,9 +134,10 @@ try:
     assert cmd is None and "supported" in err, (cmd, err)
     cmd, err = doctor.capability_install_command("tts-native", env(gpu="metal"))
     assert cmd is None and "native" in err, (cmd, err)
-    # cross-platform cap installs anywhere
+    # cross-platform cap installs anywhere (no Apple marker since not metal-only)
     cmd, _ = doctor.capability_install_command("image-preview", env(os="Linux", gpu="cpu"))
-    assert cmd and "pillow" in cmd, cmd
+    assert cmd and any("pillow" in part for part in cmd), cmd
+    assert not any("platform_machine" in part for part in cmd), cmd
 finally:
     doctor._tool_present = orig_tool
 print("capability_install_command(): OK")

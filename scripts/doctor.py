@@ -18,6 +18,8 @@ printing and (with consent) run the commands.
 
 import importlib.util
 import json
+import os
+import pathlib
 import platform
 import shutil
 import subprocess
@@ -265,9 +267,42 @@ def capability_install_command(
         if not _tool_present(t, env)
     ]
     note = f" — also needs {', '.join(missing_tools)} (install separately)" if missing_tools else ""
+
+    # Pick an install that PERSISTS for how kas is actually run, else a plain
+    # `uv pip install` gets wiped (uv re-syncs `uv run`, and reinstalling the uv
+    # tool drops anything pip-installed into its env). Apple-only packages carry
+    # a marker so a shared pyproject/tool stays cross-platform.
+    metal_only = cap["gpus"] == ["metal"]
+    marker = "; sys_platform == 'darwin' and platform_machine == 'arm64'" if metal_only else ""
+    specs = [p + marker for p in cap["pkgs"]]
+
+    if _in_uv_tool():  # `uv tool install --with` records the dep on the tool receipt
+        target = _kas_repo_root()
+        src = ["--editable", str(target)] if target else ["kas"]
+        withs = [x for s in specs for x in ("--with", s)]
+        return ["uv", "tool", "install", "--force", *src, *withs], note + " (persists with kas)"
+    if _editable_checkout():  # dev checkout via `uv run` -> add to pyproject so syncs keep it
+        return ["uv", "add", *specs], note + " (added to pyproject — persists)"
     if shutil.which("uv"):
         return ["uv", "pip", "install", "--python", sys.executable, *cap["pkgs"]], note
     return [sys.executable, "-m", "pip", "install", *cap["pkgs"]], note
+
+
+def _in_uv_tool() -> bool:
+    """Is the running interpreter a uv-managed tool env (~/.../uv/tools/<name>)?"""
+    return "uv/tools" in sys.prefix.replace(os.sep, "/")
+
+
+def _kas_repo_root():
+    """The source checkout for an editable install (so `uv tool install
+    --editable <root>` keeps it editable), or None."""
+    try:
+        import agent
+
+        root = pathlib.Path(agent.__file__).resolve().parent.parent
+        return root if (root / "pyproject.toml").exists() else None
+    except Exception:
+        return None
 
 
 def _editable_checkout() -> bool:

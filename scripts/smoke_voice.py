@@ -64,12 +64,15 @@ def main() -> int:
     except Exception:
         print("  [decode] failed:\n" + traceback.format_exc())
 
-    # Transcribe on a worker thread, exactly like /listen.
+    # Transcribe on a worker thread, exactly like /listen, printing progress.
     out: dict = {}
+
+    def progress(ev: dict) -> None:
+        print(f"  [progress] {ev}")
 
     def work() -> None:
         try:
-            out["text"], out["err"] = stt.transcribe(wav)
+            out["text"], out["err"] = stt.transcribe(wav, on_progress=progress)
         except Exception:
             out["trace"] = traceback.format_exc()
 
