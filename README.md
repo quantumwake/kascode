@@ -84,6 +84,20 @@ Some features also need a native tool — **ffmpeg** (voice capture), **pngpaste
 exact `brew`/`apt`/`dnf` command. Every feature degrades gracefully with a hint
 if its package is absent.
 
+### Uninstall
+
+```sh
+kas doctor --remove vision   # drop ONE feature (voice|tts|art|memory|web|preview)
+
+# remove kas entirely:
+curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/uninstall.sh | sh
+# or, from a checkout:  make uninstall      (KAS_PURGE=1 also drops ~/.kascode)
+```
+
+Uninstall removes the tool only; your config under `~/.kascode` and downloaded
+model weights under `~/.cache/huggingface` are left in place (the script prints
+how to remove them).
+
 ## Quick start
 
 ```sh

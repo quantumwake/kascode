@@ -531,6 +531,36 @@ def save_intent_from_argv(argv) -> None:
         save_desired(withs)
 
 
+_FEATURE_ALIASES = {
+    "tts": "tts-neural", "art": "image-gen", "image": "image-gen", "preview": "image-preview"
+}
+
+
+def remove_feature(env: dict, name: str) -> int:
+    """Drop a feature: remove its packages from the desired set and reinstall the
+    tool without them. The reverse of `/x install`."""
+    cap_id = _FEATURE_ALIASES.get(name, name)
+    cap = next((c for c in CAPS if c["id"] == cap_id and c["pkgs"]), None)
+    if cap is None:
+        names = ", ".join(sorted(c["id"] for c in CAPS if c["pkgs"]))
+        print(f"unknown feature {name!r} — removable: {names}")
+        return 1
+    drop = set(cap["pkgs"])
+    keep = [p for p in comprehensive_with(env) if p not in drop]
+    save_desired(keep)
+    print(f"removed {name} ({', '.join(sorted(drop))}) from the feature set")
+    if not _target_is_tool():
+        print("  (run an install to apply)")
+        return 0
+    cmd = ["uv", "tool", "install", "--force", *_kas_source()] + [
+        x for p in keep for x in ("--with", p)
+    ]
+    print(f"  reinstalling without it: {' '.join(cmd)}")
+    rc = subprocess.run(cmd).returncode
+    print("  done — RESTART kas" if rc == 0 else f"  failed (exit {rc})")
+    return rc
+
+
 def main(argv: list[str]) -> int:
     env = probe_env()
     if "--bundle" in argv:  # space-separated packages for install.sh to --with (no repo needed)
@@ -540,6 +570,12 @@ def main(argv: list[str]) -> int:
         out = {"env": env, "caps": [cap_status(c, env) for c in CAPS], "plan": install_plan(env)}
         print(json.dumps(out, indent=2))
         return 0
+    if "--remove" in argv:
+        i = argv.index("--remove")
+        if i + 1 >= len(argv):
+            print("usage: kas doctor --remove <feature>  (vision|voice|tts|art|memory|web|preview)")
+            return 1
+        return remove_feature(env, argv[i + 1])
     if "--install" in argv:
         guided_install(env, include_optional="--optional" in argv, assume_yes="--yes" in argv)
         return 0

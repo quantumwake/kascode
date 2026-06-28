@@ -3,7 +3,7 @@ PORT  ?= 8765
 PIDFILE := .server.pid
 LOG     := server.log
 
-.PHONY: help start start-interactive stop restart status logs perf agent test test-gpu download lint fmt typecheck cov check install doctor smoke-serve smoke-test-voice calibrate-voice
+.PHONY: help start start-interactive stop restart status logs perf agent test test-gpu download lint fmt typecheck cov check install uninstall doctor smoke-serve smoke-test-voice calibrate-voice
 
 help: ## show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-18s %s\n", $$1, $$2}'
@@ -103,6 +103,9 @@ download: ## download model weights (MODEL=...; XET=1 for xet backend)
 
 install: ## install `kas` as a global CLI (uv tool)
 	@./install.sh
+
+uninstall: ## remove the kas tool (KAS_PURGE=1 also drops ~/.kascode)
+	@./uninstall.sh
 
 doctor: ## detect platform/GPU + report what each capability needs (ARGS="--install")
 	@uv run python scripts/doctor.py $(ARGS)
