@@ -1,122 +1,115 @@
 """
-3D Starfield - Interactive live 3D starfield projection.
+3D Starfield - Interactive live 3D starfield rendered with Pygame.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+import pygame
 import random
+import sys
+import math
 
 # ─── Configuration ───────────────────────────────────────────────
-NUM_STARS = 800
-STAR_FIELD_DEPTH = 2000
+SCREEN_W, SCREEN_H = 1200, 1000
+NUM_STARS = 600
+STAR_DEPTH = 2000
 FOCAL_LENGTH = 500
-BG_COLOR = "#0a0a2e"
+BG_COLOR = (10, 10, 46)
 
+# Star color palettes: (r, g, b)
 STAR_COLORS = [
-    "white",
-    "lightblue",
-    "lightyellow",
-    "lightpink",
-    "#aaccff",
-    "#ffddaa",
-    "#ddaaff",
+    (255, 255, 255),    # white
+    (173, 216, 230),    # lightblue
+    (255, 255, 224),    # lightyellow
+    (255, 182, 193),    # lightpink
+    (170, 204, 255),    # soft blue
+    (255, 221, 170),    # soft yellow
+    (221, 170, 255),    # soft purple
 ]
 
+FPS = 60
 
-# ─── Star class ──────────────────────────────────────────────────
+
 class Star:
+    """Single star with 3D position and visual properties."""
+
+    __slots__ = ('x', 'y', 'z', 'base_r', 'base_g', 'base_b', 'speed')
+
     def __init__(self):
         self.reset()
 
     def reset(self):
-        self.x = random.uniform(-500, 500)
+        self.x = random.uniform(-600, 600)
         self.y = random.uniform(-500, 500)
-        self.z = random.uniform(10, STAR_FIELD_DEPTH)
-        self.base_size = random.uniform(1.0, 3.0)
-        self.color = random.choice(STAR_COLORS)
-        self.speed = random.uniform(1.5, 4.0)
+        self.z = random.uniform(10, STAR_DEPTH)
+        self.base_r, self.base_g, self.base_b = random.choice(STAR_COLORS)
+        self.speed = random.uniform(2.0, 5.0)
 
-    def move(self, dt):
-        self.z -= self.speed * dt
+    def move(self):
+        self.z -= self.speed
         if self.z <= 1:
             self.reset()
 
     def project(self):
+        """Perspective-project onto screen coordinates."""
         if self.z < 1:
-            return None, None
+            return None
         scale = FOCAL_LENGTH / self.z
-        return self.x * scale, self.y * scale
+        sx = SCREEN_W // 2 + int(self.x * scale)
+        sy = SCREEN_H // 2 + int(self.y * scale)
+        # Size grows as star gets closer (clamped)
+        radius = max(1, min(5, int(300.0 / self.z)))
+        # Brightness increases as star gets closer
+        brightness = min(1.0, 500.0 / self.z)
+        return sx, sy, radius, brightness
 
 
+# ─── Build star field ────────────────────────────────────────────
 stars = [Star() for _ in range(NUM_STARS)]
 
-# ─── Matplotlib figure ───────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(12, 10))
-fig.patch.set_facecolor(BG_COLOR)
-ax.set_facecolor(BG_COLOR)
-ax.set_xlim(-500, 500)
-ax.set_ylim(-500, 500)
-ax.set_aspect("equal")
-ax.axis("off")
-fig.suptitle("3D Starfield Projection", color="white", fontsize=14, y=0.98)
+# ─── Pygame setup ────────────────────────────────────────────────
+pygame.init()
+screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+pygame.display.set_caption("3D Starfield")
+clock = pygame.time.Clock()
+running = True
 
-# Pre-allocate arrays for in-place updates (avoid re-allocating every frame)
-max_visible = NUM_STARS
-_x = np.full(max_visible, np.nan)
-_y = np.full(max_visible, np.nan)
-_sizes = np.full(max_visible, 0.0)
-_colors = np.empty(max_visible, dtype=object)
-_visible_count = 0
+print("Starfield running — press ESC or close the window to stop.")
 
-# Single scatter artist
-scatter = ax.scatter([], [], s=[], c=[], edgecolors="none", zorder=2)
+# ─── Main loop ───────────────────────────────────────────────────
+frame = 0
+while running:
+    frame += 1
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                running = False
 
+    # Update stars
+    for star in stars:
+        star.move()
 
-def _init():
-    """Draw initial frame so the window isn't empty."""
-    return _update(0)
-
-
-def _update(frame):
-    global _visible_count
-
-    positions = []
-    sizes = []
-    colors = []
+    # Draw stars
+    screen.fill(BG_COLOR)
 
     for star in stars:
-        star.move(1)
-        sx, sy = star.project()
-        if sx is None:
+        result = star.project()
+        if result is None:
             continue
-        brightness = min(1.0, 500.0 / star.z)
-        positions.append([sx, sy])
-        sizes.append(star.base_size * (500.0 / star.z))
-        colors.append(star.color)
+        sx, sy, radius, brightness = result
 
-    if positions:
-        arr = np.array(positions)
-        scatter.set_offsets(arr)
-        scatter.set_sizes(np.array(sizes) * 25)
-        scatter.set_facecolors(colors)
-        scatter.set_edgecolors("none")
-        scatter.set_alpha(0.9)
-    else:
-        scatter.set_offsets(np.empty((0, 2)))
+        # Skip stars outside screen
+        if sx < -radius or sx > SCREEN_W + radius or sy < -radius or sy > SCREEN_H + radius:
+            continue
 
-    return scatter,
+        r = min(255, int(star.base_r * brightness))
+        g = min(255, int(star.base_g * brightness))
+        b = min(255, int(star.base_b * brightness))
 
+        # Draw star as a small filled circle
+        pygame.draw.circle(screen, (r, g, b), (sx, sy), radius)
 
-anim = FuncAnimation(
-    fig,
-    _update,
-    init_func=_init,
-    frames=None,
-    interval=16,          # ~60 fps
-    blit=False,
-    cache_frame_data=False,
-)
+    pygame.display.flip()
+    clock.tick(FPS)
 
-print("Starfield running — press Ctrl+C to stop.")
-plt.show()
+pygame.quit()
