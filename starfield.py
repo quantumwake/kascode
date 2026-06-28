@@ -4,19 +4,18 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
 import random
-import sys
 import os
+from PIL import Image
 
 # ─── Configuration ───────────────────────────────────────────────
 NUM_STARS = 800
 STAR_FIELD_DEPTH = 2000
 FOCAL_LENGTH = 500
-BG_COLOR = "#0a0a2e"
 OUTPUT_GIF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "starfield.gif")
 DURATION_SECONDS = 15
 FPS = 30
+TOTAL_FRAMES = DURATION_SECONDS * FPS
 
 STAR_COLORS = [
     "white",
@@ -56,22 +55,25 @@ class Star:
 
 stars = [Star() for _ in range(NUM_STARS)]
 
-# ─── Generate frames ─────────────────────────────────────────────
-total_frames = DURATION_SECONDS * FPS
-fig, ax = plt.subplots(figsize=(12, 10))
-fig.patch.set_facecolor(BG_COLOR)
-ax.set_facecolor(BG_COLOR)
+# ─── Render frames manually ──────────────────────────────────────
+print(f"Rendering {TOTAL_FRAMES} frames ({DURATION_SECONDS}s @ {FPS}fps)...")
+
+fig, ax = plt.subplots(figsize=(12, 10), facecolor="#0a0a2e")
+ax.set_facecolor("#0a0a2e")
 ax.set_xlim(-500, 500)
 ax.set_ylim(-500, 500)
 ax.set_aspect("equal")
 ax.axis("off")
-fig.suptitle("3D Starfield Projection", color="white", fontsize=14, y=0.98)
 
-scatter = ax.scatter([], [], s=[], c=[], edgecolors="none", zorder=2)
+images = []
+for f in range(TOTAL_FRAMES):
+    ax.clear()
+    ax.set_facecolor("#0a0a2e")
+    ax.set_xlim(-500, 500)
+    ax.set_ylim(-500, 500)
+    ax.set_aspect("equal")
+    ax.axis("off")
 
-frame_count = [0]  # mutable counter for closure
-
-def _draw_frame(frame):
     positions = []
     sizes = []
     colors = []
@@ -88,28 +90,33 @@ def _draw_frame(frame):
 
     if positions:
         arr = np.array(positions)
-        scatter.set_offsets(arr)
-        scatter.set_sizes(np.array(sizes) * 20)
-        scatter.set_facecolors(colors)
-        scatter.set_alpha(0.9)
-    else:
-        scatter.set_offsets(np.empty((0, 2)))
+        ax.scatter(arr[:, 0], arr[:, 1], s=np.array(sizes) * 20,
+                   c=colors, edgecolors="none", alpha=0.9)
 
-    frame_count[0] += 1
-    return scatter,
+    fig.canvas.draw()
+    # Convert figure to PIL Image
+    buf = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    buf.shape = (fig.canvas.get_width_height()[::-1] + (3,))
+    img = Image.fromarray(buf)
+    images.append(img)
 
+    if (f + 1) % 50 == 0:
+        print(f"  Frame {f+1}/{TOTAL_FRAMES}...")
 
-anim = FuncAnimation(
-    fig,
-    _draw_frame,
-    frames=total_frames,
-    interval=1000.0 / FPS,
-    blit=False,
-    cache_frame_data=False,
+plt.close(fig)
+
+# Save as GIF
+print(f"Saving starfield.gif ({os.path.getsize(OUTPUT_GIF) if os.path.exists(OUTPUT_GIF) else 0} bytes)...")
+if os.path.exists(OUTPUT_GIF):
+    os.remove(OUTPUT_GIF)
+images[0].save(
+    OUTPUT_GIF,
+    save_all=True,
+    append_images=images[1:],
+    duration=1000.0 / FPS,
+    loop=0,
+    optimize=True,
 )
 
-print(f"Rendering {total_frames} frames ({DURATION_SECONDS}s @ {FPS}fps)...")
-anim.save(OUTPUT_GIF, writer=PillowWriter(fps=FPS))
-print(f"Saved starfield.gif  ->  {OUTPUT_GIF}")
-print("Open it in your browser or image viewer!")
-plt.close(fig)
+file_size = os.path.getsize(OUTPUT_GIF)
+print(f"Done! Saved {OUTPUT_GIF} ({file_size / 1024:.1f} KB)")
