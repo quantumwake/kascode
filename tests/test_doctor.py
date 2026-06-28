@@ -57,14 +57,16 @@ finally:
     doctor._have_module, doctor._tool_present = orig_have, orig_tool
 print("cap_status(): OK")
 
-# --- install_plan(): right deps + right package-manager per host -----------
+# --- install_plan(): right deps + right install target per host ------------
 orig_have = doctor._have_module
 orig_tool = doctor._tool_present
 orig_edit = doctor._editable_checkout
+orig_target = doctor._target_is_tool
 try:
     doctor._have_module = lambda m: False
     doctor._tool_present = lambda t, e: False
-    doctor._editable_checkout = lambda: True  # dev checkout -> uv pip install
+    doctor._target_is_tool = lambda: False  # not a uv-tool install ...
+    doctor._editable_checkout = lambda: True  # ... a dev checkout -> uv add
 
     # Linux + CUDA + apt: llama.cpp (not the Apple-only mlx stack), no ffmpeg
     # (voice/vision are Apple-only, so they're n/a here — honest, not a gap hidden).
@@ -72,7 +74,7 @@ try:
     joined = "\n".join(plan)
     assert "llama-cpp-python" in joined and "mlx-vlm" not in joined, plan
     assert "ffmpeg" not in joined, plan  # voice n/a on non-Apple
-    assert "uv pip install" in joined, plan
+    assert "uv add" in joined, plan  # dev checkout target
 
     # macOS + metal + brew: mlx stack + brew ffmpeg (voice) + brew pngpaste, NOT llama.cpp.
     plan = doctor.install_plan(env(os="Darwin", gpu="metal", mgr="brew"))
@@ -86,17 +88,20 @@ try:
     assert "mlx-audio" in "\n".join(doctor.install_plan(env(gpu="metal"), include_optional=True))
 
     # A needed native tool with no recipe for this manager -> advisory echo, not dropped.
-    # (ffmpeg has recipes, but with mgr=None there's no way to run them -> echo.)
     plan = doctor.install_plan(env(os="Darwin", gpu="metal", mgr=None))
     assert any(c.startswith("echo ") and "ffmpeg" in c for c in plan), plan
 
-    # Global (non-checkout) install uses `uv tool install --with`.
-    doctor._editable_checkout = lambda: False
+    # uv-TOOL install target -> `uv tool install --with` + a make-install hint
+    # (NOT `uv pip install`, which would land in the throwaway .venv).
+    doctor._target_is_tool = lambda: True
     plan = doctor.install_plan(env(gpu="metal", mgr="brew"))
-    assert any("uv tool install --force kas" in c and "--with" in c for c in plan), plan
+    joined = "\n".join(plan)
+    assert any("uv tool install --force" in c and "--with" in c for c in plan), plan
+    assert "uv pip install" not in joined, plan
+    assert any(c.startswith("#") and "make install" in c for c in plan), plan
 finally:
     doctor._have_module, doctor._tool_present = orig_have, orig_tool
-    doctor._editable_checkout = orig_edit
+    doctor._editable_checkout, doctor._target_is_tool = orig_edit, orig_target
 print("install_plan(): OK")
 
 # --- detect_gpu(): env-driven accelerator family ---------------------------
@@ -117,13 +122,22 @@ finally:
     _pf.system, _pf.machine, doctor.shutil.which = orig_sys, orig_mach, orig_which
 print("detect_gpu(): OK")
 
-# --- capability_install_command(): one-capability pip argv (for `/x install`) ---
+# --- capability_install_command(): one-capability install argv (for `/x install`) ---
 orig_tool = doctor._tool_present
+orig_target2 = doctor._target_is_tool
 try:
+    # uv-TOOL target: `uv tool install --with` with BARE names (no marker — this
+    # machine already passed applies()).
+    doctor._target_is_tool = lambda: True
     cmd, note = doctor.capability_install_command("vision", env(gpu="metal"))
-    # env-aware persisting install (uv add / uv tool / uv pip), markered for Apple
-    assert cmd and cmd[0] == "uv" and any("mlx-vlm" in part for part in cmd), (cmd, note)
-    assert any("platform_machine" in part for part in cmd), cmd  # Apple marker
+    assert cmd and cmd[:2] == ["uv", "tool"] and any("mlx-vlm" in p for p in cmd), (cmd, note)
+    assert not any("platform_machine" in p for p in cmd), cmd  # bare in --with
+    # dev-checkout target: `uv add` with the Apple marker (shared pyproject).
+    doctor._target_is_tool = lambda: False
+    doctor._editable_checkout = lambda: True
+    cmd, _ = doctor.capability_install_command("vision", env(gpu="metal"))
+    assert cmd[:2] == ["uv", "add"] and any("platform_machine" in p for p in cmd), cmd
+    doctor._target_is_tool = orig_target2
     # native tool the feature also needs is flagged (not pip-installed) when absent
     doctor._tool_present = lambda t, e: False
     _, note = doctor.capability_install_command("voice", env(gpu="metal"))
@@ -140,6 +154,8 @@ try:
     assert not any("platform_machine" in part for part in cmd), cmd
 finally:
     doctor._tool_present = orig_tool
+    doctor._target_is_tool = orig_target2
+    doctor._editable_checkout = orig_edit
 print("capability_install_command(): OK")
 
 print("all doctor tests passed")

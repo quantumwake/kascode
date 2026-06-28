@@ -275,7 +275,7 @@ def capability_install_command(
     metal_only = cap["gpus"] == ["metal"]
     marker = "; sys_platform == 'darwin' and platform_machine == 'arm64'" if metal_only else ""
 
-    if _in_uv_tool():  # `uv tool install --with` records the dep on the tool receipt
+    if _target_is_tool():  # `uv tool install --with` records the dep on the tool receipt
         target = _kas_repo_root()  # bundle into the install so a reinstall keeps it
         src = ["--editable", str(target)] if target else ["kas"]
         # bare names (no marker): applies() already confirmed this machine
@@ -291,6 +291,23 @@ def capability_install_command(
 def _in_uv_tool() -> bool:
     """Is the running interpreter a uv-managed tool env (~/.../uv/tools/<name>)?"""
     return "uv/tools" in sys.prefix.replace(os.sep, "/")
+
+
+def _kas_tool_installed() -> bool:
+    """Is kas installed as a uv tool? Check the uv tools DIRECTORY directly —
+    `which('kas')` is unreliable here because `make doctor` runs via `uv run`,
+    whose subprocess PATH may not include ~/.local/bin. We detect it so we advise
+    installing into the tool, not the throwaway .venv."""
+    xdg = os.environ.get("XDG_DATA_HOME")
+    roots = [pathlib.Path(xdg) / "uv" / "tools"] if xdg else []
+    roots.append(pathlib.Path.home() / ".local" / "share" / "uv" / "tools")
+    return any((r / "kas").exists() for r in roots)
+
+
+def _target_is_tool() -> bool:
+    """Should installs go into the kas uv tool? True if we ARE the tool, or a
+    kas tool is installed alongside this (dev) process."""
+    return _in_uv_tool() or _kas_tool_installed()
 
 
 def _kas_repo_root():
@@ -357,10 +374,19 @@ def install_plan(env: dict, include_optional: bool = False) -> list[str]:
 
     if pkgs:
         uniq = list(dict.fromkeys(pkgs))
-        if _editable_checkout():
-            cmds.append("uv pip install " + " ".join(uniq))
+        if _target_is_tool():
+            # kas runs as a uv tool — install INTO the tool (a plain `uv pip
+            # install` from here would land in the .venv the tool never uses).
+            repo = _kas_repo_root()
+            src = f"--editable {repo}" if repo else "kas"
+            withs = " ".join(f"--with {p}" for p in uniq)
+            cmds.append(f"uv tool install --force {src} {withs}")
+            keep = " ".join(uniq)
+            cmds.append(f'# persist across `make install`:  KAS_WITH="{keep}" make install')
+        elif _editable_checkout():  # dev checkout via uv run -> pyproject
+            cmds.append("uv add " + " ".join(uniq))
         else:
-            cmds.append("uv tool install --force kas " + " ".join(f"--with {p}" for p in uniq))
+            cmds.append("uv pip install " + " ".join(uniq))
     return cmds
 
 
@@ -415,6 +441,9 @@ def guided_install(env: dict, include_optional: bool = False, assume_yes: bool =
         print(f"  {c}")
     print()
     for cmd in plan:
+        if cmd.startswith("#"):  # advisory comment (e.g. the make-install hint)
+            print(f"  {cmd}")
+            continue
         if cmd.startswith("echo "):  # advisory note, not a real install
             subprocess.run(cmd, shell=True)
             continue
