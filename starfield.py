@@ -1,23 +1,17 @@
 """
-3D Starfield - Renders an animated 3D starfield projection as a GIF file.
+3D Starfield - Interactive live 3D starfield projection.
 """
 
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")  # non-interactive backend, works headless
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 import random
-import os
-from PIL import Image
 
 # ─── Configuration ───────────────────────────────────────────────
 NUM_STARS = 800
 STAR_FIELD_DEPTH = 2000
 FOCAL_LENGTH = 500
-OUTPUT_GIF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "starfield.gif")
-DURATION_SECONDS = 15
-FPS = 30
-TOTAL_FRAMES = DURATION_SECONDS * FPS
+BG_COLOR = "#0a0a2e"
 
 STAR_COLORS = [
     "white",
@@ -57,24 +51,35 @@ class Star:
 
 stars = [Star() for _ in range(NUM_STARS)]
 
-# ─── Render frames manually ──────────────────────────────────────
-print(f"Rendering {TOTAL_FRAMES} frames ({DURATION_SECONDS}s @ {FPS}fps)...")
-
-fig, ax = plt.subplots(figsize=(12, 10), facecolor="#0a0a2e")
-ax.set_facecolor("#0a0a2e")
+# ─── Matplotlib figure ───────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(12, 10))
+fig.patch.set_facecolor(BG_COLOR)
+ax.set_facecolor(BG_COLOR)
 ax.set_xlim(-500, 500)
 ax.set_ylim(-500, 500)
 ax.set_aspect("equal")
 ax.axis("off")
+fig.suptitle("3D Starfield Projection", color="white", fontsize=14, y=0.98)
 
-images = []
-for f in range(TOTAL_FRAMES):
-    ax.clear()
-    ax.set_facecolor("#0a0a2e")
-    ax.set_xlim(-500, 500)
-    ax.set_ylim(-500, 500)
-    ax.set_aspect("equal")
-    ax.axis("off")
+# Pre-allocate arrays for in-place updates (avoid re-allocating every frame)
+max_visible = NUM_STARS
+_x = np.full(max_visible, np.nan)
+_y = np.full(max_visible, np.nan)
+_sizes = np.full(max_visible, 0.0)
+_colors = np.empty(max_visible, dtype=object)
+_visible_count = 0
+
+# Single scatter artist
+scatter = ax.scatter([], [], s=[], c=[], edgecolors="none", zorder=2)
+
+
+def _init():
+    """Draw initial frame so the window isn't empty."""
+    return _update(0)
+
+
+def _update(frame):
+    global _visible_count
 
     positions = []
     sizes = []
@@ -92,33 +97,26 @@ for f in range(TOTAL_FRAMES):
 
     if positions:
         arr = np.array(positions)
-        ax.scatter(arr[:, 0], arr[:, 1], s=np.array(sizes) * 20,
-                   c=colors, edgecolors="none", alpha=0.9)
+        scatter.set_offsets(arr)
+        scatter.set_sizes(np.array(sizes) * 25)
+        scatter.set_facecolors(colors)
+        scatter.set_edgecolors("none")
+        scatter.set_alpha(0.9)
+    else:
+        scatter.set_offsets(np.empty((0, 2)))
 
-    fig.canvas.draw()
-    # Convert figure to PIL Image (modern matplotlib API)
-    buf = fig.canvas.renderer.buffer_rgba()
-    buf = np.asarray(buf)
-    img = Image.fromarray(buf)
-    images.append(img)
+    return scatter,
 
-    if (f + 1) % 50 == 0:
-        print(f"  Frame {f+1}/{TOTAL_FRAMES}...")
 
-plt.close(fig)
-
-# Save as GIF
-print(f"Saving starfield.gif ({os.path.getsize(OUTPUT_GIF) if os.path.exists(OUTPUT_GIF) else 0} bytes)...")
-if os.path.exists(OUTPUT_GIF):
-    os.remove(OUTPUT_GIF)
-images[0].save(
-    OUTPUT_GIF,
-    save_all=True,
-    append_images=images[1:],
-    duration=1000.0 / FPS,
-    loop=0,
-    optimize=True,
+anim = FuncAnimation(
+    fig,
+    _update,
+    init_func=_init,
+    frames=None,
+    interval=16,          # ~60 fps
+    blit=False,
+    cache_frame_data=False,
 )
 
-file_size = os.path.getsize(OUTPUT_GIF)
-print(f"Done! Saved {OUTPUT_GIF} ({file_size / 1024:.1f} KB)")
+print("Starfield running — press Ctrl+C to stop.")
+plt.show()
