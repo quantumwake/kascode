@@ -650,7 +650,7 @@ except (ImportError, RuntimeError) as e:
             draw.ellipse([sx - sz, sy - sz, sx + sz, sy + sz],
                          fill=(r2, g2, b2))
 
-        # Draw shooting stars
+        # Draw shooting stars (with trails)
         for ss in shooting_stars:
             entry = ss.get()
             if entry is None:
@@ -666,6 +666,15 @@ except (ImportError, RuntimeError) as e:
             sz = max(2, radius)
             draw.ellipse([sx - sz, sy - sz, sx + sz, sy + sz],
                          fill=(r2, g2, b2))
+            # Draw trail (fading ghosting behind shooting star)
+            for i, (tsx, tsy, tr, tb, tr2, tg, tb2) in enumerate(ss.trail):
+                trail_alpha = (i / max(1, len(ss.trail))) ** 1.5
+                tr2v = clamp(int(tr2 * trail_alpha))
+                tg2v = clamp(int(tg * trail_alpha))
+                tb2v = clamp(int(tb2 * trail_alpha))
+                tr_sz = max(1, int(tr * 0.4))
+                draw.ellipse([tsx - tr_sz, tsy - tr_sz, tsx + tr_sz, tsy + tr_sz],
+                             fill=(tr2v, tg2v, tb2v))
 
         images.append(img)
 
