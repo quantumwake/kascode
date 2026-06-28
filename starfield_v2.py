@@ -609,7 +609,7 @@ except (ImportError, RuntimeError) as e:
                 draw.ellipse([sx - 1, sy - 1, sx + 1, sy + 1],
                              fill=(v, v, v + 20))
 
-        # Draw galaxy stars
+        # Draw galaxy stars (with trails)
         galaxy_entries = []
         for gs in galaxy_stars:
             gs.move()
