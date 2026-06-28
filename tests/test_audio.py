@@ -131,26 +131,38 @@ print("transcribe via warm worker (stubbed): OK")
 # --- text→voice (TTS) -------------------------------------------------------
 from agent.adapters.audio import tts  # noqa: E402
 
-# native command building per OS (macOS say / linux espeak family) or None.
-cmd = tts._native_cmd("hello world")
-assert cmd is None or (cmd[0] in ("say", "espeak-ng", "espeak", "spd-say") and "hello world" in cmd)
-print("tts native_cmd: OK")
+# native synth writes the spoken text to an output file (macOS say / linux espeak).
+cmd = tts._native_synth("hello world", "/tmp/o.wav")
+assert cmd is None or (cmd[0] in ("say", "espeak-ng", "espeak") and "/tmp/o.wav" in cmd)
+print("tts native_synth: OK")
 
-# speak() with no engine -> graceful error; with a stubbed Popen -> launches.
-orig_native = tts._native_cmd
+# the FX layer: default is the "warrior" pitch-down chain; KAS_TTS_FX=none disables.
+assert "asetrate" in tts._fx_filter() and "aecho" in tts._fx_filter()
+import os as _os2  # noqa: E402
+
+_os2.environ["KAS_TTS_FX"] = "none"
+try:
+    assert tts._fx_filter() == ""
+finally:
+    del _os2.environ["KAS_TTS_FX"]
+print("tts fx_filter: OK")
+
+# speak() with no engine -> graceful error; with a stubbed pipeline -> launches it.
+orig_synth = tts._native_synth
 orig_mlx = tts._mlx_available
-tts._native_cmd = lambda _t: None
+tts._native_synth = lambda *_a, **_k: None
 tts._mlx_available = lambda: False
 try:
     msg, is_err = tts.speak("hi")
     assert is_err and "TTS" in msg, (msg, is_err)
 finally:
-    tts._native_cmd = orig_native
+    tts._native_synth = orig_synth
     tts._mlx_available = orig_mlx
 
 launched = {}
 orig_popen = tts.subprocess.Popen
-tts._native_cmd = lambda t: ["true", t]
+orig_pipeline = tts._pipeline
+tts._pipeline = lambda t: ["true", t]
 
 
 def _fake_popen(cmd, **kw):
@@ -162,10 +174,10 @@ tts.subprocess.Popen = _fake_popen
 try:
     msg, is_err = tts.speak("speak this")
     assert not is_err and launched["cmd"] == ["true", "speak this"], (msg, launched)
-    # empty text is a no-op success
+    # empty text is a no-op success (no pipeline built)
     assert tts.speak("   ") == ("", False)
 finally:
-    tts._native_cmd = orig_native
+    tts._pipeline = orig_pipeline
     tts.subprocess.Popen = orig_popen
 print("tts speak: OK")
 
