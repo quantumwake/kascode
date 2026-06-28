@@ -109,7 +109,7 @@ anim = FuncAnimation(
 )
 
 print(f"Rendering {total_frames} frames ({DURATION_SECONDS}s @ {FPS}fps)...")
-anim.save(OUTPUT_GIF, writer=PillowWriter(fps=FPS), savefig_dict={"facecolor": BG_COLOR})
+anim.save(OUTPUT_GIF, writer=PillowWriter(fps=FPS))
 print(f"Saved starfield.gif  ->  {OUTPUT_GIF}")
 print("Open it in your browser or image viewer!")
 plt.close(fig)
