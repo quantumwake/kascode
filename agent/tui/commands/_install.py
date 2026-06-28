@@ -26,6 +26,9 @@ def install_capability(app, cap_id: str) -> None:
             for line in (proc.stdout + proc.stderr).strip().splitlines()[-4:]:
                 app.call_from_thread(app.body_write, Text(f"  {line}", style="dim"))
             if proc.returncode == 0:
+                from scripts.doctor import save_intent_from_argv
+
+                save_intent_from_argv(cmd)  # persist the feature set for reinstalls
                 importlib.invalidate_caches()  # so find_spec sees the new package
                 app.call_from_thread(
                     app.body_write,

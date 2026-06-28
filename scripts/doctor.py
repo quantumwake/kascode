@@ -270,18 +270,16 @@ def capability_install_command(
 
     # Pick an install that PERSISTS for how kas is actually run, else a plain
     # `uv pip install` gets wiped (uv re-syncs `uv run`, and reinstalling the uv
-    # tool drops anything pip-installed into its env). Apple-only packages carry
-    # a marker so a shared pyproject/tool stays cross-platform.
-    metal_only = cap["gpus"] == ["metal"]
-    marker = "; sys_platform == 'darwin' and platform_machine == 'arm64'" if metal_only else ""
-
-    if _target_is_tool():  # `uv tool install --with` records the dep on the tool receipt
-        target = _kas_repo_root()  # bundle into the install so a reinstall keeps it
-        src = ["--editable", str(target)] if target else ["kas"]
-        # bare names (no marker): applies() already confirmed this machine
-        withs = [x for p in cap["pkgs"] for x in ("--with", p)]
-        return ["uv", "tool", "install", "--force", *src, *withs], note + " (persists with kas)"
+    # tool drops anything pip-installed). The uv-tool path is COMPREHENSIVE (keeps
+    # every other feature) and records intent; dev gets a markered `uv add`.
+    if _target_is_tool():
+        pkgs = comprehensive_with(env, add=cap["pkgs"])  # additive: keep other features
+        withs = [x for p in pkgs for x in ("--with", p)]
+        return ["uv", "tool", "install", "--force", *_kas_source(), *withs], note + " (persists)"
     if _editable_checkout():  # dev checkout via `uv run` -> add to pyproject so syncs keep it
+        marker = "; sys_platform == 'darwin' and platform_machine == 'arm64'" if (
+            cap["gpus"] == ["metal"]
+        ) else ""
         return ["uv", "add", *[p + marker for p in cap["pkgs"]]], note + " (added to pyproject)"
     if shutil.which("uv"):
         return ["uv", "pip", "install", "--python", sys.executable, *cap["pkgs"]], note
@@ -320,6 +318,73 @@ def _kas_repo_root():
         return root if (root / "pyproject.toml").exists() else None
     except Exception:
         return None
+
+
+# The git source for a from-scratch install (curl install.sh) — so `uv tool
+# install` works WITHOUT a local clone. A local editable checkout takes priority.
+KAS_GIT = "git+https://github.com/quantumwake/kas"
+
+
+def _kas_source() -> list[str]:
+    """Source spec for `uv tool install`: the local editable checkout if present,
+    else the git URL (NEVER the bare name `kas` — that's a different PyPI tool)."""
+    repo = _kas_repo_root()
+    return ["--editable", str(repo)] if repo else [KAS_GIT]
+
+
+# --- desired-feature persistence: the ONE source of truth -------------------
+# All installers (kas doctor --install, /x install, make install/install.sh)
+# read+write this so a feature set, once chosen, survives every reinstall and no
+# path drops another's packages.
+DESIRED_FILE = pathlib.Path.home() / ".kascode" / "features.json"
+
+
+def load_desired() -> list[str]:
+    try:
+        data = json.loads(DESIRED_FILE.read_text())
+        return [str(x) for x in data.get("with", [])]
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return []
+
+
+def save_desired(pkgs) -> None:
+    try:
+        DESIRED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        DESIRED_FILE.write_text(json.dumps({"with": sorted(set(pkgs))}, indent=2) + "\n")
+    except OSError:
+        pass
+
+
+def comprehensive_with(env: dict, add=(), include_optional: bool = False) -> list[str]:
+    """The COMPLETE --with set for a uv-tool install — additive, never subtractive
+    (a `--force` reinstall would otherwise drop any package not listed). Union of:
+    the persisted intent, `add`, every applicable feature already installed (keep
+    it), and every applicable non-optional feature (+ optional if asked)."""
+    want = set(load_desired()) | set(add)
+    for cap in CAPS:
+        if not (applies(cap, env) and cap["pkgs"]):
+            continue
+        if cap_status(cap, env)["state"] == "ready":  # installed -> keep it
+            want |= set(cap["pkgs"])
+        elif not cap.get("optional") or include_optional:  # wanted feature -> add it
+            want |= set(cap["pkgs"])
+    want.discard("mlx-lm")  # core dep; never bundle redundantly
+    return sorted(want)
+
+
+def default_bundle(env: dict) -> list[str]:
+    """Packages a FRESH install bundles: the persisted set if any, else a light
+    default (voice + memory + preview + web; the heavy vision/tts/art are opt-in
+    via `kas doctor --install`)."""
+    saved = load_desired()
+    if saved:
+        return saved
+    light = {"voice", "memory", "image-preview", "web"}
+    out: list[str] = []
+    for cap in CAPS:
+        if cap["id"] in light and applies(cap, env) and cap["pkgs"]:
+            out += cap["pkgs"]
+    return sorted(dict.fromkeys(out))
 
 
 def _editable_checkout() -> bool:
@@ -372,21 +437,21 @@ def install_plan(env: dict, include_optional: bool = False) -> list[str]:
                 f"(no recipe for {mgr or 'your OS'}; has: {avail})'"
             )
 
-    if pkgs:
-        uniq = list(dict.fromkeys(pkgs))
-        if _target_is_tool():
-            # kas runs as a uv tool — install INTO the tool (a plain `uv pip
-            # install` from here would land in the .venv the tool never uses).
-            repo = _kas_repo_root()
-            src = f"--editable {repo}" if repo else "kas"
-            withs = " ".join(f"--with {p}" for p in uniq)
-            cmds.append(f"uv tool install --force {src} {withs}")
-            keep = " ".join(uniq)
-            cmds.append(f'# persist across `make install`:  KAS_WITH="{keep}" make install')
-        elif _editable_checkout():  # dev checkout via uv run -> pyproject
-            cmds.append("uv add " + " ".join(uniq))
-        else:
-            cmds.append("uv pip install " + " ".join(uniq))
+    if not pkgs:  # no MISSING python packages -> only native-tool advice (if any)
+        return cmds
+    if _target_is_tool():
+        # COMPREHENSIVE (additive): `uv tool install --force` replaces the --with
+        # set, so we list the COMPLETE desired set (keep installed + add wanted),
+        # never just the missing — otherwise a reinstall drops other features.
+        uniq = comprehensive_with(env, include_optional=include_optional)
+        src = " ".join(_kas_source())
+        withs = " ".join(f"--with {p}" for p in uniq)
+        cmds.append(f"uv tool install --force {src} {withs}")
+        cmds.append("# then RESTART kas so it picks up the new packages")
+    elif _editable_checkout():  # dev checkout via uv run -> pyproject
+        cmds.append("uv add " + " ".join(dict.fromkeys(pkgs)))
+    else:
+        cmds.append("uv pip install " + " ".join(dict.fromkeys(pkgs)))
     return cmds
 
 
@@ -454,10 +519,23 @@ def guided_install(env: dict, include_optional: bool = False, assume_yes: bool =
                 continue
         rc = subprocess.run(cmd, shell=True).returncode
         print("  ok" if rc == 0 else f"  failed (exit {rc}) — continuing")
+        if rc == 0 and cmd.startswith("uv tool install"):
+            save_intent_from_argv(cmd.split())  # remember it for next reinstall
+
+
+def save_intent_from_argv(argv) -> None:
+    """Persist the --with packages from a `uv tool install …` command, so the
+    chosen feature set survives the next `make install`/reinstall."""
+    withs = [argv[i + 1] for i, a in enumerate(argv) if a == "--with" and i + 1 < len(argv)]
+    if withs:
+        save_desired(withs)
 
 
 def main(argv: list[str]) -> int:
     env = probe_env()
+    if "--bundle" in argv:  # space-separated packages for install.sh to --with (no repo needed)
+        print(" ".join(default_bundle(env)))
+        return 0
     if "--json" in argv:
         out = {"env": env, "caps": [cap_status(c, env) for c in CAPS], "plan": install_plan(env)}
         print(json.dumps(out, indent=2))

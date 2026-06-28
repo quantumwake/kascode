@@ -49,38 +49,40 @@ for which combinations are tested.
 
 ## Install
 
-Installs as the `kas` and `kas-server` commands via
-[uv](https://docs.astral.sh/uv/):
-
-```sh
-git clone https://github.com/quantumwake/kas && cd kas
-./install.sh                 # editable install to PATH  (or: make install)
-```
-
-Or, with repo access, a one-liner (bootstraps uv + installs from git):
+**One command, no clone needed** — installs `kas` + `kas-server` as a
+[uv](https://docs.astral.sh/uv/) tool (bootstraps uv + a pinned Python):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/install.sh | sh
 ```
 
-Opt-in capabilities are **optional extras** (the core install pulls none) —
-let `kas doctor --install` pick the right ones for your platform, or add by hand:
+(From a local checkout, `./install.sh` or `make install` does an editable install.)
+
+### Features — one installer
+
+Optional features (voice, vision, image-gen, memory, web, …) are **not** in the
+core install. There is **one** way to add them, used by every path:
 
 ```sh
-uv add 'kas[web]'      # web_search / web_fetch          (--net)
-uv add 'kas[art]'      # generate_image (FLUX/MLX)        (--art)
-uv add 'kas[memory]'   # semantic recall (sqlite-vec)     (/memory)
-uv add 'kas[vision]'   # image → text (mlx-vlm)           (drag-drop / /image)
-uv add 'kas[voice]'    # voice → text (mlx-whisper)       (/listen; also needs ffmpeg)
-uv add 'kas[tts]'      # neural text → voice (mlx-audio)  (/say; native say/espeak work without it)
-uv add 'kas[preview]'  # inline image preview (Pillow)    (/show)
-uv add 'kas[all]'      # everything applicable to this platform
+kas doctor            # see what's available + installed on your host
+kas doctor --install  # guided: install the features that work here (persists)
 ```
 
-Some need a native tool too: **ffmpeg** (voice capture), **pngpaste** (macOS
-clipboard images), **espeak-ng** (Linux TTS). `kas doctor` lists these and the
-exact `brew`/`apt`/`dnf` command. Every feature degrades gracefully with an
-install hint if its package is absent.
+You can also add a single feature in the TUI — `/listen install` (voice),
+`/image install` (vision), `/memory install`, `/say install`, `/show install` —
+which runs the *same* installer for that one feature.
+
+**It's consistent and additive:** every installer writes your chosen set to
+`~/.kascode/features.json` and reinstalls the kas tool with the **complete** set,
+so a new feature never drops an old one, and the set **survives `make install`**
+and re-`curl`s. The first install bundles a light default (voice + memory +
+preview + web on Apple Silicon); `kas doctor --install` adds the heavier
+vision/tts/image-gen runtimes.
+
+Some features also need a native tool — **ffmpeg** (voice capture), **pngpaste**
+(macOS clipboard images), **espeak-ng** (Linux TTS); `kas doctor` prints the
+exact `brew`/`apt`/`dnf` command. Every feature degrades gracefully with a hint
+if its package is absent.
 
 ## Quick start
 

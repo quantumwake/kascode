@@ -38,16 +38,26 @@ say "  ensuring Python $PYVER (uv-managed)..."
 uv python install "$PYVER" >/dev/null 2>&1 || true
 
 # --- optional capabilities -------------------------------------------------
-# kas runs as a uv tool, and `uv tool install --force` reinstalls core-only —
-# so installing a feature's package on-demand (`/listen install`) gets WIPED on
-# the next reinstall. To make features persist we bundle their packages into the
-# install with `--with`. On Apple Silicon we include the common ones by default;
-# override with KAS_WITH (e.g. KAS_WITH="mlx-whisper mlx-vlm mlx-audio mflux" to
-# add the heavy vision/tts/image-gen runtimes, or KAS_WITH="" for none).
+# kas runs as a uv tool; `uv tool install --force` replaces the bundled package
+# set, so feature packages are bundled via `--with` to persist them. Precedence:
+#   KAS_WITH (explicit)  >  the saved set from a prior `kas doctor --install`
+#   (~/.kascode/features.json — read directly so `curl | sh` needs no repo)  >
+#   a light default. Add heavy ones later with `kas doctor --install`.
+read_saved_features() {
+    python3 - <<'PY' 2>/dev/null || true
+import json, pathlib
+try:
+    print(" ".join(json.loads((pathlib.Path.home()/".kascode"/"features.json").read_text()).get("with", [])))
+except Exception:
+    pass
+PY
+}
 case "$(uname -s)/$(uname -m)" in
-    Darwin/arm64) WITH_PKGS="${KAS_WITH-mlx-whisper sqlite-vec model2vec pillow ddgs trafilatura}" ;;
-    *)            WITH_PKGS="${KAS_WITH-sqlite-vec model2vec pillow ddgs trafilatura}" ;;
+    Darwin/arm64) DEFAULT_WITH="mlx-whisper sqlite-vec model2vec pillow ddgs trafilatura" ;;
+    *)            DEFAULT_WITH="sqlite-vec model2vec pillow ddgs trafilatura" ;;
 esac
+WITH_PKGS="${KAS_WITH-$(read_saved_features)}"
+[ -z "$WITH_PKGS" ] && WITH_PKGS="$DEFAULT_WITH"
 WITH_FLAGS=""
 for p in $WITH_PKGS; do WITH_FLAGS="$WITH_FLAGS --with $p"; done
 [ -n "$WITH_PKGS" ] && say "  bundling features: $WITH_PKGS"

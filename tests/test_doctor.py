@@ -98,7 +98,7 @@ try:
     joined = "\n".join(plan)
     assert any("uv tool install --force" in c and "--with" in c for c in plan), plan
     assert "uv pip install" not in joined, plan
-    assert any(c.startswith("#") and "make install" in c for c in plan), plan
+    assert any(c.startswith("#") and "RESTART" in c for c in plan), plan
 finally:
     doctor._have_module, doctor._tool_present = orig_have, orig_tool
     doctor._editable_checkout, doctor._target_is_tool = orig_edit, orig_target
