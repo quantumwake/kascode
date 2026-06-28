@@ -113,27 +113,41 @@ def _first_json_object(text: str) -> dict:
     raise ValueError("unterminated JSON object in tool call")
 
 
-class HermesDialect(_StandardDialect):
+class _JsonDialect(_StandardDialect):
+    """Base for the JSON-bodied families (Hermes / Llama / Mistral). They differ
+    ONLY in their stream markers (data) — the tool-call body is the same shape in
+    all three: a JSON object, or a JSON array whose first element is the call
+    (Mistral). Name from "name"; args from "arguments" or its "parameters" alias.
+    So the parse lives here once and subclasses carry only marker data."""
+
+    def parse_tool_body(self, body: str, schemas: Schemas | None) -> dict:
+        body = body.strip()
+        try:
+            data = json.loads(body)  # clean object or array
+        except json.JSONDecodeError:
+            data = _first_json_object(body)  # tolerate prose / trailing tokens
+        # Mistral wraps calls in an array; the agent loop issues one at a time, so
+        # surface the first. (Parallel calls aren't expressible in the single-call
+        # parser interface.) Objects pass straight through.
+        call = data[0] if isinstance(data, list) else data
+        name = call.get("name")
+        if not name:
+            raise ValueError("no name in tool call")
+        return _call(name, call.get("arguments", call.get("parameters", {})))
+
+
+class HermesDialect(_JsonDialect):
     """ChatML JSON tool calls — the most common interchange format.
 
-    <tool_call>
-    {"name": "read_file", "arguments": {"path": "x.py"}}
-    </tool_call>
+    <tool_call>{"name": "read_file", "arguments": {"path": "x.py"}}</tool_call>
     """
 
     name = "hermes-json"
 
-    def parse_tool_body(self, body: str, schemas: Schemas | None) -> dict:
-        obj = _first_json_object(body)
-        name = obj.get("name")
-        if not name:
-            raise ValueError("no name in tool call")
-        return _call(name, obj.get("arguments", obj.get("parameters", {})))
 
-
-class LlamaDialect(_StandardDialect):
+class LlamaDialect(_JsonDialect):
     """Llama 3.x: a bare JSON object, optionally fenced by <|python_tag|> …
-    <|eom_id|>. Llama uses "parameters" (not "arguments")."""
+    <|eom_id|>. (Llama writes "parameters"; the shared parser accepts it.)"""
 
     name = "llama-json"
     text_markers = {"<think>": "think", "<|python_tag|>": "tool_call"}
@@ -141,15 +155,8 @@ class LlamaDialect(_StandardDialect):
     tool_close = "<|eom_id|>"  # EOS-class: usually withheld, so flush() parses
     fail_close = ""
 
-    def parse_tool_body(self, body: str, schemas: Schemas | None) -> dict:
-        obj = _first_json_object(body)
-        name = obj.get("name")
-        if not name:
-            raise ValueError("no name in tool call")
-        return _call(name, obj.get("parameters", obj.get("arguments", {})))
 
-
-class MistralDialect(_StandardDialect):
+class MistralDialect(_JsonDialect):
     """Mistral/Mixtral: [TOOL_CALLS] then a JSON array. There is no closing
     marker — the array runs to end-of-message — so the close is the (withheld)
     EOS and flush() parses the buffered body."""
@@ -159,21 +166,6 @@ class MistralDialect(_StandardDialect):
     tool_open = "[TOOL_CALLS]"
     tool_close = "</s>"  # withheld EOS -> never seen in stream -> flush() parses
     fail_close = ""
-
-    def parse_tool_body(self, body: str, schemas: Schemas | None) -> dict:
-        body = body.strip()
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError:
-            data = _first_json_object(body)
-        # Mistral wraps calls in an array; the agent loop issues one at a time,
-        # so we surface the first. (Parallel calls in one turn aren't supported
-        # by the single-call parser interface.)
-        call = data[0] if isinstance(data, list) else data
-        name = call.get("name")
-        if not name:
-            raise ValueError("no name in tool call")
-        return _call(name, call.get("arguments", call.get("parameters", {})))
 
 
 # DeepSeek special tokens use fullwidth bar (U+FF5C) + lower-block (U+2581).
