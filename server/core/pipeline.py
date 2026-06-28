@@ -184,9 +184,9 @@ def run(
         from ..prompting.recover import recover_tool_call
 
         leaked = "\n".join(b["text"] for b in blocks if b["type"] == "text")
-        recovered = recover_tool_call(leaked, schemas)
+        # recover_tool_call logs its own WARN (which format it fell back to).
+        recovered = recover_tool_call(leaked, schemas, dialect_name=engine.dialect.name)
         if recovered is not None:
-            log.info("recovered tool call %r from non-dialect format", recovered["name"])
             parser.tool_calls.append(recovered)
             blocks.append({"type": "tool_use", **recovered})
             yield {"kind": "tool_use", **recovered}

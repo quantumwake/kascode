@@ -59,6 +59,24 @@ qwen = (
 )
 assert call(qwen) == ("grep", {"pattern": "TODO", "max": 3}), call(qwen)
 
+# python-call form (some distilled models write the call as text): NAME(k="v")
+assert call('get_weather(city="Paris")') == ("get_weather", {"city": "Paris"}), call(
+    'get_weather(city="Paris")'
+)
+assert call('read_file(path="a.py")') == ("read_file", {"path": "a.py"})
+# coercion still applies through python-call (grep.max is integer)
+assert call('grep(pattern="TODO", max=5)') == ("grep", {"pattern": "TODO", "max": 5})
+
+# SAFETY: ordinary code whose calls AREN'T tools must never be recovered as one.
+code = 'with open("primes.py", "w") as f:\n    f.write("x")\nfor i in range(2, 10):\n    print(i)'
+assert call(code) is None, call(code)
+# a tool name in prose but not actually called -> nothing
+assert call("I will use read_file to inspect it.") is None
+
+# python-call is NOT attempted without a tool set to anchor on (too risky).
+
+assert recover_tool_call('get_weather(city="Paris")', schemas=None) is None
+
 # plain prose -> nothing (no false positives)
 assert call("Here is the weather: it's sunny in Paris today, around 18C.") is None
 assert call("") is None

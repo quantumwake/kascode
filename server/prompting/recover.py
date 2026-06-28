@@ -10,23 +10,117 @@ this over the assembled text and tries each known format in turn. Returns a
 """
 
 import json
+import logging
 import re
 from typing import Any
 
 from .wire import Schemas, new_tool_use_id
 
+log = logging.getLogger("kas")
 
-def recover_tool_call(text: str, schemas: Schemas | None = None) -> dict | None:
-    """Try each known tool-call format on `text`; return a tool_use or None."""
-    if not text or ("<" not in text and "{" not in text and "[TOOL_CALLS]" not in text):
+# Structured formats tried in order. Name-bearing markers, so low false-positive
+# risk. (deepseek/kimi/harmony aren't here: their markers are distinctive enough
+# that detect_dialect keys on them, so they don't leak past the primary parser.)
+_PARSERS = (
+    ("qwen-xml", lambda t, _v: _qwen_xml(t)),
+    ("claude-xml", lambda t, _v: _claude_xml(t)),
+    ("mistral-array", lambda t, _v: _mistral_array(t)),
+    ("json", lambda t, _v: _json_object(t)),
+    # python-call LAST and only with a known tool set — it would otherwise match
+    # ordinary code like open(...)/range(...). Gated on the real tool names.
+    # (lambda-wrapped like the rest so the tuple doesn't reference it before its
+    # def below.)
+    ("python-call", lambda t, v: _python_call(t, v)),
+)
+
+
+def recover_tool_call(
+    text: str, schemas: Schemas | None = None, dialect_name: str | None = None
+) -> dict | None:
+    """Fallback ladder: try every known tool-call format on `text` until one
+    yields a call whose name is a real tool, then return a {id, name, input}
+    tool_use (or None). Logs a WARN when recovery is needed — that means the
+    PRIMARY dialect parser missed, which is worth surfacing without crashing.
+
+    `dialect_name` is only for the log line; `schemas` (tool name -> param types)
+    both coerces argument types AND restricts which names count as tool calls."""
+    if not text or not any(ch in text for ch in "<{[("):
         return None
-    for parse in (_qwen_xml, _claude_xml, _mistral_array, _json_object):
-        got = parse(text)
-        if got and got[0]:
-            name, args = got
-            args = {k: _coerce(v, (schemas or {}).get(name, {}).get(k)) for k, v in args.items()}
-            return {"id": new_tool_use_id(), "name": name, "input": args}
+    valid = set(schemas) if schemas else None
+    for fmt, parse in _PARSERS:
+        if fmt == "python-call" and not valid:
+            continue  # too risky without a tool set to anchor on
+        got = parse(text, valid)
+        if not got or not got[0]:
+            continue
+        name, args = got
+        if valid is not None and name not in valid:
+            continue  # a call-shaped thing, but not one of OUR tools
+        args = {k: _coerce(v, (schemas or {}).get(name, {}).get(k)) for k, v in args.items()}
+        log.warning(
+            "tool-call recovery: %sparser emitted no call; recovered %r via %s format "
+            "(model isn't producing the active dialect's format)",
+            f"'{dialect_name}' " if dialect_name else "",
+            name,
+            fmt,
+        )
+        return {"id": new_tool_use_id(), "name": name, "input": args}
     return None
+
+
+def _python_call(text: str, valid: set[str] | None):
+    """A Python-style call the model wrote as prose/code: NAME(k="v", k2=3). Only
+    matches a NAME that is a known tool, so real code (open/range/print) is safe."""
+    if not valid:
+        return None
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", text):
+        name = m.group(1)
+        if name not in valid:
+            continue
+        args = _balanced_kwargs(text, m.end() - 1)
+        if args is not None:
+            return name, args
+    return None
+
+
+def _balanced_kwargs(text: str, open_idx: int) -> dict | None:
+    """Parse `(k="v", k2=3, …)` starting at the '(' index, string-/paren-aware.
+    Returns the kwargs dict, or None if the parens don't close."""
+    depth, in_str, esc, quote, end = 0, False, False, "", -1
+    for j in range(open_idx, len(text)):
+        c = text[j]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == quote:
+                in_str = False
+        elif c in "\"'":
+            in_str, quote = True, c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                end = j
+                break
+    if end == -1:
+        return None
+    body = text[open_idx + 1 : end]
+    args: dict[str, Any] = {}
+    for am in re.finditer(r"""(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,()]+)""", body):
+        k, v = am.group(1), am.group(2).strip()
+        if len(v) >= 2 and v[0] in "\"'" and v[-1] == v[0]:
+            if v[0] == '"':
+                try:
+                    v = json.loads(v)
+                except json.JSONDecodeError:
+                    v = v[1:-1]
+            else:
+                v = v[1:-1]
+        args[k] = v
+    return args
 
 
 def _qwen_xml(text: str):
