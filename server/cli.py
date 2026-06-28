@@ -7,6 +7,17 @@ run `kas-server` directly to run it in the foreground.
 
 import argparse
 import os
+import socket
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    """Is something already LISTENING on host:port? Uses a connect probe (not a
+    test bind) so it's reliable regardless of SO_REUSEADDR — connect succeeds
+    only if a server is actually accepting there."""
+    probe = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((probe, port)) == 0
 
 
 def main() -> None:
@@ -20,6 +31,20 @@ def main() -> None:
     ap.add_argument("--host", default=os.environ.get("KAS_HOST", "127.0.0.1"))
     ap.add_argument("--model", default=None, help="model repo to load")
     a = ap.parse_args()
+
+    # Preflight: refuse to start onto an occupied port. Without this the bind
+    # fails AFTER the model loads, uvicorn exits, and any pre-existing (orphan)
+    # server keeps answering — so callers see "ready" while our process is dead.
+    # Fail loud and early instead.
+    if _port_in_use(a.host, a.port):
+        raise SystemExit(
+            f"kas-server: port {a.port} is already in use — a server is already "
+            f"running there.\n"
+            f"  stop it:        kas serve --stop   "
+            f"(or:  lsof -ti:{a.port} | xargs kill)\n"
+            f"  use another:    --port <N>   (or KAS_PORT)"
+        )
+
     if a.model:
         os.environ["KAS_MODEL"] = a.model
     os.environ["KAS_PORT"] = str(a.port)

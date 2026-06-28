@@ -54,14 +54,18 @@ def _spawn_server(port: int, model: str | None = None) -> subprocess.Popen:
 
 
 def _wait_for_server(base: str, proc: subprocess.Popen, attempts: int = 180) -> bool:
-    """Poll base/v1/models until it answers; False if the process dies or times out."""
+    """Poll base/v1/models until it answers; False if the process dies or times out.
+
+    The liveness check comes BEFORE the probe each iteration: if our child exited
+    (e.g. it hit an occupied port and the preflight aborted it), an unrelated
+    server still answering on `base` must not be mistaken for ours."""
     for _ in range(attempts):
+        if proc.poll() is not None:  # our child died — don't be fooled by an orphan
+            return False
         try:
             httpx.get(base + "/v1/models", timeout=1)
             return True
         except Exception:
-            if proc.poll() is not None:
-                return False
             time.sleep(2)
     return False
 

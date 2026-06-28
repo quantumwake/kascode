@@ -11,16 +11,24 @@ help: ## show targets
 start: ## start the inference server (MODEL=... PORT=...)
 	@if [ -f $(PIDFILE) ] && kill -0 $$(cat $(PIDFILE)) 2>/dev/null; then \
 		echo "already running (pid $$(cat $(PIDFILE))) — make stop first"; exit 1; fi
+	@# Port preflight: refuse to start onto a port a FOREIGN server (kas serve,
+	@# bare kas-server, an orphan) already owns. Otherwise our bind dies AFTER the
+	@# model loads while the squatter keeps answering, and readiness reads as "ok".
+	@if lsof -nP -iTCP:$(PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
+		echo ":$(PORT) already in use by another server — make stop / kas serve --stop,"; \
+		echo "  or: lsof -ti:$(PORT) | xargs kill"; exit 1; fi
 	@echo "checking weights for $(MODEL) (downloads with progress if missing)..."
 	@HF_XET_HIGH_PERFORMANCE=1 uv run hf download $(MODEL)
-	@KAS_MODEL=$(MODEL) nohup uv run uvicorn server.app:app --port $(PORT) > $(LOG) 2>&1 & \
+	@# One start path: go through server.cli (same entry as kas-server / kas serve)
+	@# so the in-process port preflight + env handling are identical everywhere.
+	@KAS_MODEL=$(MODEL) nohup uv run python -m server.cli --port $(PORT) > $(LOG) 2>&1 & \
 		echo $$! > $(PIDFILE)
 	@echo "starting $(MODEL) on :$(PORT) (pid $$(cat $(PIDFILE))) — loading into memory..."
-	@i=0; until curl -s -m 1 http://127.0.0.1:$(PORT)/v1/models >/dev/null 2>&1; do \
-		i=$$((i+1)); \
-		if [ $$i -gt 150 ]; then echo "server did not come up — make logs"; exit 1; fi; \
+	@i=0; while [ $$i -le 150 ]; do \
 		if ! kill -0 $$(cat $(PIDFILE)) 2>/dev/null; then echo "server died — make logs"; exit 1; fi; \
-		sleep 2; done
+		if curl -s -m 1 http://127.0.0.1:$(PORT)/v1/models >/dev/null 2>&1; then break; fi; \
+		i=$$((i+1)); sleep 2; done; \
+		if [ $$i -gt 150 ]; then echo "server did not come up — make logs"; exit 1; fi
 	@echo "ready: http://127.0.0.1:$(PORT)/v1/messages"
 
 start-interactive: ## pick a locally downloaded model, then start
