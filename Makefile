@@ -46,11 +46,22 @@ serve: ## run the server in the FOREGROUND (Ctrl-C to stop; crashes print live)
 start-interactive: ## pick a locally downloaded model, then start
 	@$(MAKE) start MODEL=$$(uv run python scripts/select_model.py)
 
-stop: ## stop the inference server
-	@if [ -f $(PIDFILE) ]; then \
-		kill $$(cat $(PIDFILE)) 2>/dev/null && echo "stopped (pid $$(cat $(PIDFILE)))" || echo "not running"; \
-		rm -f $(PIDFILE); \
-	else pkill -f "uvicorn server.app" 2>/dev/null && echo "stopped" || echo "not running"; fi
+stop: ## stop the server — by pidfile AND by whatever actually holds the port
+	@# A pidfile match is the nice path, but the server may have been started
+	@# another way (make serve, kas serve, bare kas-server) or the pidfile may be
+	@# stale — so authoritatively kill whatever is LISTENING on :$(PORT). SIGTERM
+	@# first (graceful), then SIGKILL anything that's still bound after 1s.
+	@pid=$$(cat $(PIDFILE) 2>/dev/null || true); \
+	if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+		kill "$$pid" 2>/dev/null && echo "stopped pidfile pid $$pid"; fi; \
+	rm -f $(PIDFILE); \
+	pids=$$(lsof -nP -ti:$(PORT) 2>/dev/null || true); \
+	if [ -n "$$pids" ]; then \
+		kill $$pids 2>/dev/null || true; sleep 1; \
+		alive=$$(lsof -nP -ti:$(PORT) 2>/dev/null || true); \
+		if [ -n "$$alive" ]; then kill -9 $$alive 2>/dev/null || true; fi; \
+		echo "stopped server on :$(PORT)"; \
+	else echo "nothing listening on :$(PORT)"; fi
 
 restart: stop start ## restart the server
 
