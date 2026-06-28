@@ -99,7 +99,7 @@ def _draw_frame(frame):
     return scatter,
 
 
-anim = plt.FuncAnimation(
+anim = FuncAnimation(
     fig,
     _draw_frame,
     frames=total_frames,
