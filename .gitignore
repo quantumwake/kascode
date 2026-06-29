@@ -37,3 +37,4 @@ dist/
 coverage.xml
 htmlcov/
 code-coverage-results.md
+scripts/_build_info.py

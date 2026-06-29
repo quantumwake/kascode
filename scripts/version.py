@@ -40,13 +40,39 @@ def _git(*args: str) -> str | None:
         return None
 
 
+def _embedded() -> tuple[str, str] | None:
+    """(commit, build-number) stamped into the wheel by hatch_build.py at build
+    time. Present in an installed build; absent in a checkout or a git-less sdist."""
+    try:
+        from scripts._build_info import BUILD_COMMIT, BUILD_NUMBER
+
+        return str(BUILD_COMMIT), str(BUILD_NUMBER)
+    except Exception:
+        return None
+
+
+def _installed_version(base: str) -> str:
+    """Version for an installed package: the build commit if the wheel was stamped
+    (so `kas --version` is traceable to a commit), else the bare packaged version."""
+    emb = _embedded()
+    return f"{base}+build.{emb[1]}.g{emb[0]}" if emb else base
+
+
 def kas_version() -> str:
     base = _packaged()
-    # Installed build (no checkout): just the packaged version.
-    if _git("rev-parse", "--is-inside-work-tree") != "true":
-        return base
+    # Git build info ONLY when our package root IS the git repo root — i.e. a real
+    # kas checkout. An installed package can sit INSIDE an unrelated ANCESTOR repo
+    # (e.g. an accidental `git init` in $HOME); that repo's state must never be
+    # read as kas's, or an empty/foreign repo yields the "?.build.0.g?.dirty"
+    # garbage. Comparing show-toplevel to our root rejects that case — then we use
+    # the commit stamped into the wheel at build time instead.
+    toplevel = _git("rev-parse", "--show-toplevel")
+    if not toplevel or Path(toplevel).resolve() != _ROOT:
+        return _installed_version(base)
+    sha = _git("rev-parse", "--short", "HEAD")
+    if not sha:  # a repo with no commits yet — not a usable build ref
+        return _installed_version(base)
     branch = _git("rev-parse", "--abbrev-ref", "HEAD") or "?"
-    sha = _git("rev-parse", "--short", "HEAD") or "?"
     # Build number = commits since the latest vX.Y.Z release tag (total commits
     # if no tags exist yet). Increments every commit; resets at each release tag.
     last_tag = _git("describe", "--tags", "--match", "v*", "--abbrev=0")
