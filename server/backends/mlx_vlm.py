@@ -128,6 +128,8 @@ class MlxVlmEngine:
     ) -> Iterator[GenChunk]:
         from mlx_vlm import stream_generate
 
+        from ._gpu import gpu_guard
+
         prompt, images = self._pending
         self._cancel = False
         self.stats = {"active": True, "phase": "generate", "generated": 0}
@@ -139,13 +141,18 @@ class MlxVlmEngine:
         if top_p is not None:
             kwargs["top_p"] = top_p
         try:
-            for chunk in stream_generate(self.model, self.processor, prompt, images, **kwargs):
-                if self._cancel:
-                    break
-                text = getattr(chunk, "text", str(chunk))
-                produced += 1
-                self.stats["generated"] = produced
-                yield GenChunk(text=text)
+            # Serialize GPU work with the text engine (and other VLM requests) —
+            # the VLM engine has no worker thread, so concurrent requests would
+            # otherwise overlap command buffers on the one Metal device and trip
+            # the GPU watchdog -> whole-server abort. Held for the whole generation.
+            with gpu_guard():
+                for chunk in stream_generate(self.model, self.processor, prompt, images, **kwargs):
+                    if self._cancel:
+                        break
+                    text = getattr(chunk, "text", str(chunk))
+                    produced += 1
+                    self.stats["generated"] = produced
+                    yield GenChunk(text=text)
         finally:
             self.stats = {"active": False}
         elapsed = time.time() - t0

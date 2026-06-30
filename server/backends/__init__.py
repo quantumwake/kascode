@@ -127,10 +127,42 @@ def _detect_backend(model_id: str) -> str:
     if low.endswith(".gguf") or "gguf" in low:
         return "llama_cpp"  # GGUF -> llama.cpp
     if _is_apple_silicon() and _has("mlx_vlm")() and _is_vision_model(model_id):
-        return "mlx_vlm"
+        # A multimodal model whose TEXT architecture mlx_lm supports goes to the
+        # text engine, not mlx-vlm. Text is the common case for an agent, and the
+        # text engine is the mature/stable path (KV-resume, the serialized GPU
+        # worker, all the crash fixes); mlx-vlm's handling of some newer MoE+vision
+        # archs hangs the Metal GPU watchdog and aborts the whole server. Reserve
+        # mlx-vlm for models mlx_lm can't load at all (pure vision), or KAS_BACKEND.
+        if not _mlx_lm_supports(model_id):
+            return "mlx_vlm"
     if _is_apple_silicon():
         return "mlx"
     return "mlx"
+
+
+def _mlx_lm_supports(model_id: str) -> bool:
+    """True if mlx_lm ships a TEXT implementation for this model's architecture
+    (config.json `model_type` -> mlx_lm/models/<model_type>.py). When it does, we
+    prefer the text engine over mlx-vlm for a multimodal checkpoint."""
+    try:
+        import glob
+        import importlib.util
+        import json
+        import pathlib
+
+        hub = pathlib.Path.home() / ".cache" / "huggingface" / "hub"
+        snaps = sorted(
+            glob.glob(str(hub / ("models--" + model_id.replace("/", "--")) / "snapshots" / "*"))
+        )
+        if not snaps:
+            return False
+        mt = json.loads((pathlib.Path(snaps[-1]) / "config.json").read_text()).get("model_type", "")
+        spec = importlib.util.find_spec("mlx_lm")
+        if not mt or not spec or not spec.origin:
+            return False
+        return (pathlib.Path(spec.origin).parent / "models" / f"{mt}.py").exists()
+    except Exception:
+        return False
 
 
 def make_engine(model_id: str, backend: str | None = None) -> EngineLike:

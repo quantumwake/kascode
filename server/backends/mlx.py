@@ -34,6 +34,8 @@ from typing import Any
 
 from ..core.cache import longest_common_prefix
 from ..core.ports import GenChunk
+from ._gpu import GPU_LOCK as _GPU_LOCK
+from ._gpu import SERIALIZE as _SERIALIZE_GPU
 
 log = logging.getLogger("kas")
 
@@ -51,17 +53,10 @@ QUANTIZED_KV_START = int(os.environ.get("KAS_KV_START", "8192"))
 # trips the client's read timeout.
 PING_SECONDS = float(os.environ.get("KAS_PING_SECONDS", "5"))
 
-# Process-wide GPU serialization lock. There is ONE Metal device; each engine has
-# its own worker thread, so once several models are resident (the registry) two
-# engines could submit command buffers concurrently. Under that contention a
-# single buffer can exceed the macOS GPU watchdog (~17s) and abort the whole
-# process with an UNCATCHABLE C++ exception (kIOGPUCommandBufferCallbackErrorTimeout).
-# Holding this lock for the duration of each generation serializes all GPU work
-# across every engine/model — requests queue rather than crash. KAS_GPU_SERIALIZE=0
-# opts out (parallel generation; only safe with one resident model).
-_GPU_LOCK = threading.Lock()
-_SERIALIZE_GPU = os.environ.get("KAS_GPU_SERIALIZE", "1") != "0"
-# Prefill chunk size handed to mlx_lm — smaller buffers are safer under load.
+# _GPU_LOCK / _SERIALIZE_GPU are the process-wide GPU serialization primitives,
+# SHARED with every other backend (incl. the VLM engine) via _gpu.py — so text and
+# vision models can't submit overlapping Metal command buffers and trip the GPU
+# watchdog. Prefill chunk size handed to mlx_lm — smaller buffers are safer.
 PREFILL_STEP = int(os.environ.get("KAS_PREFILL_STEP", "512"))
 
 
