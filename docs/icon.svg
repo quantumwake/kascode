@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="K.A.S — Kasra's Agentic Shell">
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffc861"/>
+      <stop offset="0.55" stop-color="#ffb000"/>
+      <stop offset="1" stop-color="#ff8c00"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#160b00"/>
+      <stop offset="1" stop-color="#070300"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="r">
+      <rect x="24" y="24" width="464" height="464" rx="108"/>
+    </clipPath>
+  </defs>
+
+  <!-- app tile -->
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#tile)"/>
+
+  <!-- CRT scanlines -->
+  <g clip-path="url(#r)" fill="#ff8c00" opacity="0.05">
+    <rect x="24" y="48"  width="464" height="6"/>
+    <rect x="24" y="96"  width="464" height="6"/>
+    <rect x="24" y="144" width="464" height="6"/>
+    <rect x="24" y="192" width="464" height="6"/>
+    <rect x="24" y="240" width="464" height="6"/>
+    <rect x="24" y="288" width="464" height="6"/>
+    <rect x="24" y="336" width="464" height="6"/>
+    <rect x="24" y="384" width="464" height="6"/>
+    <rect x="24" y="432" width="464" height="6"/>
+  </g>
+
+  <!-- amber bezel -->
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="none" stroke="#ff8c00" stroke-width="7" stroke-opacity="0.55"/>
+
+  <!-- terminal prompt:  ❯ ▮ -->
+  <g filter="url(#glow)">
+    <polyline points="168,150 252,236 168,322" fill="none" stroke="url(#amber)"
+              stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="288" y="196" width="64" height="80" rx="10" fill="url(#amber)">
+      <animate attributeName="opacity" values="1;1;0.15;1" keyTimes="0;0.5;0.75;1" dur="1.15s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <!-- wordmark -->
+  <text x="256" y="416" text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="62" font-weight="700" letter-spacing="10" fill="url(#amber)">K·A·S</text>
+</svg>
