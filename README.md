@@ -26,8 +26,12 @@ wheel, ~10 s). Optional features (voice, vision, image-gen, web) install via
 ## Quick start
 
 ```sh
-kas serve          # start the inference server (loads the model)
+kas serve          # start the inference server (loads the default model)
 kas                # launch the agent TUI
+
+# pick an MLX model explicitly (Apple Silicon):
+kas serve --model mlx-community/Qwen3.6-27B-4bit         # default · dense
+kas serve --model mlx-community/Qwen3.6-35B-A3B-4bit     # MoE · ~4x faster decode
 
 kas --yolo "build me an asteroids game in ./game, then run it"   # one-shot
 ```
