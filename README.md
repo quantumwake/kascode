@@ -3,31 +3,42 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/local-agents-ff9d00?style=for-the-badge&labelColor=111111" />
-  <img src="https://img.shields.io/badge/offline-first-ff9d00?style=for-the-badge&labelColor=111111" />
-  <img src="https://img.shields.io/badge/MLX-Apple%20GPU-ff9d00?style=for-the-badge&labelColor=111111" />
-  <img src="https://img.shields.io/badge/no%20telemetry-black?style=for-the-badge&labelColor=ff9d00" />
+  <img src="https://img.shields.io/badge/%F0%9F%A4%96%20local--agents-ff9d00?style=for-the-badge&labelColor=111111" />
+  <img src="https://img.shields.io/badge/%F0%9F%94%8C%20offline--first-ff9d00?style=for-the-badge&labelColor=111111" />
+  <img src="https://img.shields.io/badge/%F0%9F%8D%8E%20MLX-Apple%20GPU-ff9d00?style=for-the-badge&labelColor=111111" />
+  <img src="https://img.shields.io/badge/%F0%9F%9F%A9%20CUDA-NVIDIA%20GGUF-76b900?style=for-the-badge&labelColor=111111" />
+  <img src="https://img.shields.io/badge/%F0%9F%99%88%20no%20telemetry-black?style=for-the-badge&labelColor=ff9d00" />
 </p>
 
-**K.A.S — Kasra's Agentic Shell.** Run frontier open models **locally** on the
-Apple-silicon GPU (via MLX), behind an **Anthropic Messages API-compatible
-server**, and drive them with an agentic TUI. Nothing leaves the machine — tool
-use, streaming, thinking, subagents, KV-cache continuation, local recall, and
-surgical edits, all on your own iron.
+**K.A.S — Kasra's Agentic Shell.** Run frontier open models **locally** — on the
+**Apple-silicon GPU** (via MLX) *or* an **NVIDIA GPU** (via llama.cpp/GGUF) —
+behind an **Anthropic Messages API-compatible server**, and drive them with an
+agentic TUI. 🔒 Nothing leaves the machine: tool use, streaming, thinking,
+subagents, KV-cache continuation, local recall, and surgical edits, all on your
+own iron.
 
-```text
-┌──────────────┐   anthropic SDK    ┌──────────────┐    mlx_lm     ┌──────────┐
-│  kas         │ ─────────────────▶ │  kas-server  │ ────────────▶ │  Qwen /  │
-│  agent + TUI │  POST /v1/messages │ FastAPI · SSE │              │  Gemma   │
-└──────────────┘ ◀───────────────── └──────────────┘               └──────────┘
-       │  tool_use blocks                                          (Apple GPU)
-       ▼
-  bash(PTY) · read_file · write_file · edit_file · list_dir · subagent
-  recall (local BM25, on by default) · web_search · web_fetch (opt-in, --net)
-  generate_image (local FLUX via mflux, opt-in, --art)
+```mermaid
+flowchart LR
+    kas["🖥️ <b>kas</b><br/>agent + TUI"]
+    srv["⚙️ <b>kas-server</b><br/>FastAPI · SSE<br/>KV continuation"]
+    apple["🍎 Apple GPU<br/>MLX"]
+    nvidia["🟩 NVIDIA GPU<br/>llama.cpp / GGUF"]
+    kas -->|"POST /v1/messages<br/>(anthropic SDK)"| srv
+    srv -->|"mlx_lm"| apple
+    srv -->|"llama-cpp-python"| nvidia
+    srv -.->|"SSE · text / thinking / tool_use"| kas
 ```
 
-## Requirements
+🛠️ **Tools the model can call** — `bash` (PTY) · `read_file` · `write_file` ·
+`edit_file` · `list_dir` · `subagent` · `recall` (local BM25, on by default) ·
+`web_search` / `web_fetch` (opt-in, `--net`) · `generate_image` (local FLUX via
+mflux, opt-in, `--art`).
+
+## 🧰 Requirements
+
+The server runs on **either** of two GPU backends — pick the row for your iron:
+
+🍎 **Apple Silicon → MLX** (the primary, daily-driven path)
 
 | | Minimum | Recommended |
 |---|---|---|
@@ -35,19 +46,26 @@ surgical edits, all on your own iron.
 | macOS | 14 (Sonoma) | latest |
 | Unified memory | **24 GB** (4-bit ≤ ~14B, tight) | **64 GB** (27B/MoE) · 128 GB (80B+) |
 | Free disk | ~20 GB (one 4-bit model) | 100 GB+ (multiple models) |
-| Tooling | [uv](https://docs.astral.sh/uv/) (auto-installed); Python 3.11 (uv-managed) | — |
 
-The model is the memory driver — `Qwen3.6-27B-4bit` (default) needs ~15 GB of
-weights plus KV cache, so **32–64 GB** is the comfortable floor; smaller 4-bit
-models run on 24 GB. The **agent alone** (`kas`, no local server) is portable
-and has no GPU/RAM needs — point it at a remote `--base-url` (see Platforms).
+🟩 **NVIDIA → llama.cpp / GGUF** (validated on an A100 — see [🟩 NVIDIA / CUDA](#-nvidia--cuda))
 
-**On any host, run `kas doctor`** — it detects your OS / CPU arch / GPU vendor
-and peripherals and reports exactly which libraries each optional feature needs,
-with `kas doctor --install` to set them up. See the support matrix at the bottom
-for which combinations are tested.
+| | Minimum | Recommended |
+|---|---|---|
+| GPU | NVIDIA, CUDA 11.8+ driver, `nvidia-smi` on PATH | 24 GB+ VRAM (A100/H100/RTX) |
+| VRAM | **16 GB** (4-bit ≤ ~14B) | **40 GB** (27–35B at long context) |
+| OS | Linux x86-64 | — |
 
-## Install
+Both share: [uv](https://docs.astral.sh/uv/) (auto-installed) + Python 3.11
+(uv-managed). The model is the memory driver — a 27B 4-bit GGUF/MLX is ~15–18 GB
+of weights plus KV cache. The **agent alone** (`kas`, no local server) is fully
+portable and needs no GPU — point it at a remote `--base-url`.
+
+🩺 **On any host, run `kas doctor`** — it detects your OS / CPU arch / GPU vendor
+and reports exactly what each optional feature needs (`kas doctor --install` sets
+them up). See the [support matrix](#-platforms--support-matrix) and
+[testing](#-tested-hardware--models) for what's been verified.
+
+## ⚡ Install
 
 **One command, no clone needed** — installs `kas` + `kas-server` as a
 [uv](https://docs.astral.sh/uv/) tool (bootstraps uv + a pinned Python):
@@ -56,9 +74,13 @@ for which combinations are tested.
 curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/install.sh | sh
 ```
 
-(From a local checkout, `./install.sh` or `make install` does an editable install.)
+The installer is **GPU-aware**: on Apple Silicon it bundles MLX; on an NVIDIA box
+it detects the GPU and sets up the CUDA llama.cpp backend for you (prebuilt wheel
+fast-path, ~10 s — or a source build if needed). 🟩 NVIDIA details
+[below](#-nvidia--cuda). (From a local checkout, `./install.sh` or `make install`
+does an editable install.)
 
-### Features — one installer
+### 🧩 Features — one installer
 
 Optional features (voice, vision, image-gen, memory, web, …) are **not** in the
 core install. There is **one** way to add them, used by every path:
@@ -88,7 +110,7 @@ Some features also need a native tool — **ffmpeg** (voice capture), **pngpaste
 exact `brew`/`apt`/`dnf` command. Every feature degrades gracefully with a hint
 if its package is absent.
 
-### Uninstall
+### 🧹 Uninstall
 
 Drop a single feature (one of `voice`, `tts`, `art`, `vision`, `memory`, `web`,
 `preview`):
@@ -108,7 +130,7 @@ drop `~/.kascode`. Uninstall removes the tool only — your config under
 `~/.kascode` and downloaded model weights under `~/.cache/huggingface` are left
 in place (the script prints how to remove them).
 
-## Quick start
+## 🚀 Quick start
 
 ```sh
 kas serve
@@ -132,18 +154,17 @@ sizes) or type any Hugging Face model id to load — so the two-step above
 collapses to a single command on a local box. It only offers for a local
 `--base-url`; a remote one is left to you.
 
-## The TUI
+## 🖥️ The TUI
 
-Three panels, amber on black:
+Stacked regions, amber on black:
 
-```text
-┌────────────────────────────────────────────────────────────┐
-│  work view   · streamed thinking (dim) / text / tool calls   │  scroll + select
-├────────────────────────────────────────────────────────────┤
-│  status bar  · model · yolo · rag · live tok/s · queued steers│
-├────────────────────────────────────────────────────────────┤
-│ > _          · always live: task / steer / answer / paste     │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    work["📜 <b>work view</b> — text · tool calls · results &nbsp;(scroll + select)"]
+    think["💭 <b>thinking pane</b> — live reasoning, last 4 lines, auto-collapses"]
+    status["📊 <b>status bar</b> — model · yolo · rag · live tok/s · GPU · queued steers"]
+    input["⌨️ <b>input</b> — always live: task / steer / answer / paste"]
+    work --- think --- status --- input
 ```
 
 - **Steer while it works** — keep typing; messages inject at the next tool
@@ -170,17 +191,19 @@ Three panels, amber on black:
   `/model` (arrow-key picker, shows size + partial/full) · `/compact` ·
   `/self-skill` · `/stop` (Esc, also cancels a long prefill) · `/pause` · `/status`.
 
-## Commands & flags
+## 🎛️ Commands & flags
 
 ```text
 kas [task...]              agent — interactive TUI, or one-shot if a task is given
 kas serve                 start the inference server (daemon by default)
+kas serve --model ID [--quant Q4_K_M]   load a model (GGUF quant optional)
 kas serve --stop|--status|--logs|--no-daemon
 kas-server                run the server in the foreground directly
 
 --workdir DIR              working directory for tools           (default .)
 --yolo                     run bash without per-command confirmation
 --model ID                 model label (default: ask the server)
+--quant NAME               GGUF quant to load (e.g. Q4_K_M); else auto-picked
 --base-url URL             server URL              (default 127.0.0.1:8765)
 --max-tokens N             output cap per response                  (16384)
 --compact-at N             auto-compact past N input tokens        (120000)
@@ -193,7 +216,7 @@ kas-server                run the server in the foreground directly
 --plain                    line REPL instead of the TUI
 ```
 
-## Under the hood
+## 🔩 Under the hood
 
 - **dialects** — auto-detects Gemma vs Qwen ChatML from the model's template;
   translates Anthropic tool-use ⇄ each model's native wire format.
@@ -230,7 +253,7 @@ kas-server                run the server in the foreground directly
 - **hot-swap** — `/model [n]` (or `POST /v1/models/select`) swaps the served
   model live, no restart; the picker shows each model's size + partial/full.
 
-## Models
+## 🧠 Models
 
 Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
 `make start MODEL=…`. On 128 GB, options include:
@@ -247,7 +270,53 @@ hermes / deepseek / kimi / gemma) — see the **Models × dialect** table below.
 The `/model` picker lists only chat-capable models (it classifies each cached
 model by modality, hiding embedding/Whisper/diffusion weights).
 
-## Configuration (env)
+## 🟩 NVIDIA / CUDA
+
+Same agent, same API — just a different GPU under the server. On an NVIDIA box
+the server runs **GGUF models through llama.cpp**, and the installer wires up the
+CUDA build automatically.
+
+**1. Install** (the curl installer detects the GPU and does this for you):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/install.sh | sh
+# tries abetlen's prebuilt CUDA wheel first (~10 s); else builds from source.
+# verify it linked CUDA:  python -c "import llama_cpp, glob, pathlib as p; \
+#   print(glob.glob(str(p.Path(llama_cpp.__file__).parent/'lib'/'*cuda*')))"
+```
+
+> ⚠️ A plain `pip install llama-cpp-python` is **CPU-only** — your GPU sits idle.
+> Let the installer (or `python -m scripts.install_deps`) build the CUDA variant.
+> Re-run the **installer**, not a bare pip, after any `kas` upgrade — a forced
+> tool reinstall rebuilds the venv and would otherwise drop the CUDA wheel.
+
+**2. Run** — point it at any Hugging Face GGUF repo:
+
+```sh
+kas serve --model unsloth/Qwen3.6-27B-MTP-GGUF      # auto-picks a 4-bit quant
+kas serve --model unsloth/gemma-4-31B-it-qat-GGUF --quant Q4_K_M
+kas                                                  # the agent, unchanged
+```
+
+**What kas handles for you on GGUF:**
+
+- 📥 **Quant selection** — multi-quant repos are a zoo (`UD-Q4_K_M`, `Q4_K_XL`,
+  `IQ4_XS`, split shards, mmproj/MTP files). kas auto-picks a sane 4-bit K-quant,
+  logs the alternatives, and `--quant` pins one. mmproj/MTP files are skipped.
+- 📏 **Context auto-sizing** — reads the model's trained length and uses as much
+  as the GPU can hold, then **backs off** if the KV won't fit (no manual tuning).
+  A dense 31B tops ~24 k on a 40 GB card; a hybrid 27B (mostly linear-attention
+  layers) fits **128 k** on the same card. Override with `KAS_CTX` / `KAS_CTX_MAX`.
+- ⚡ **Flash Attention on** by default (needed for sliding-window models like
+  gemma; `KAS_FLASH_ATTN=0` to disable).
+- 📊 **GPU in `/stats`** — live VRAM used/total + utilization via `nvidia-smi`.
+- 🛟 **Never a dead turn** — if the KV fills mid-generation it ends the turn
+  cleanly (continue to resume) instead of erroring.
+
+ROCm (AMD) builds from the same path (`-DGGML_HIP=on`) but isn't tested yet —
+[PRs welcome](#-platforms--support-matrix).
+
+## ⚙️ Configuration (env)
 
 ```text
   KAS_MODEL          server model           (mlx-community/Qwen3.6-27B-4bit)
@@ -272,7 +341,19 @@ model by modality, hiding embedding/Whisper/diffusion weights).
   KAS_IMAGE_INLINE   =1 base64-embed attached images (only for a REMOTE server)
 ```
 
-## Make targets
+🟩 **GGUF / NVIDIA backend** (llama.cpp path only):
+
+```text
+  KAS_GGUF_QUANT     quant to load, e.g. Q4_K_M   (--quant; else auto-picked)
+  KAS_GGUF_FILE      exact GGUF filename/glob to load (power users)
+  KAS_CTX            force the context window     (else sized to the model)
+  KAS_CTX_MAX        ceiling for auto-sizing      (131072 · backoff fits the GPU)
+  KAS_GPU_LAYERS     layers to offload to GPU     (-1 = all)
+  KAS_FLASH_ATTN     =0 disables Flash Attention  (on · needed for SWA models)
+  KAS_BACKEND        force a backend: mlx | llama_cpp   (else auto-detected)
+```
+
+## 🛠️ Make targets
 
 ```text
 make start [MODEL=… PORT=…]   download (with progress) + boot server
@@ -283,16 +364,16 @@ make doctor [ARGS=--install]  platform/GPU capability report + guided install
 make download MODEL=…         fetch weights only
 ```
 
-## Platforms & support matrix
+## 🌐 Platforms & support matrix
 
 Run `kas doctor` on any machine for a live, platform-specific report of what's
 installed and what each capability needs (`kas doctor --install` does it guided).
 
 - **Agent (`kas`)** — portable. It only speaks HTTP to an Anthropic-compatible
   server, so it runs anywhere Python does (macOS, Linux, Windows).
-- **Server (`kas-server`)** — **MLX** (Apple GPU) is the primary, heavily-used
-  backend; a **llama.cpp/GGUF** backend (CPU + CUDA/ROCm/Metal) is implemented
-  for non-Apple hardware but only smoke-tested on CPU so far.
+- **Server (`kas-server`)** — **MLX** (Apple GPU) is the primary, daily-driven
+  backend; the **llama.cpp/GGUF** backend (CPU + CUDA/ROCm/Metal) covers non-Apple
+  hardware and is now **validated on NVIDIA** (A100 — see [🧪 testing](#-tested-hardware--models)).
 - You can always point the agent at any other Anthropic-compatible endpoint
   (vLLM, TGI, LM Studio, …): `kas --base-url http://host:port`.
 
@@ -301,9 +382,9 @@ installed and what each capability needs (`kas doctor --install` does it guided)
 | Platform / accelerator | Backend | Status |
 |---|---|---|
 | macOS · Apple Silicon (Metal) | `mlx` | ✅ primary, daily use |
+| 🟩 Linux · NVIDIA (CUDA) | `llama_cpp` (CUDA build) | ✅ tested — A100 40 GB (gemma-4-31B, Qwen3.6-27B) |
 | Linux/macOS · CPU | `llama_cpp` (GGUF) | 🟡 CI smoke only (Qwen2.5-0.5B GGUF) |
-| Linux · NVIDIA (CUDA) | `llama_cpp` (CUDA build) | 🟡 untested — **PRs welcome** |
-| Linux · AMD (ROCm) | `llama_cpp` (ROCm build) | 🟡 untested — **PRs welcome** |
+| Linux · AMD (ROCm) | `llama_cpp` (ROCm build) | 🟡 builds, untested — **PRs welcome** |
 | Windows | agent only → remote `--base-url` | 🟡 untested — **PRs welcome** |
 | any · vLLM adapter | — | ⬜ planned (unlocks 100B+ on CUDA) |
 
@@ -378,7 +459,92 @@ direction: those tools currently parallelize multiple models / many concurrent
 sessions better than kas does — kas's edge is the KV-cache continuation and
 per-session KV threads. Improvements on either axis are welcome.
 
-## Layout
+## 🧪 Tested hardware & models
+
+What we've actually run end-to-end (load → tool-using generation), so you know
+what's known-good vs. theoretical. ✅ full run · 🟡 loads/runs, lightly checked.
+
+| GPU | Backend | Model | What ran |
+|---|---|---|---|
+| 🍎 Apple Silicon (M-series) | MLX | Qwen3.6-27B-4bit · gpt-oss-20b · Gemma 3/4 · Llama-3.2-3B · Mistral-7B | ✅ daily driver |
+| 🟩 NVIDIA A100 40 GB | llama.cpp · CUDA | `Qwen3.6-27B-MTP-GGUF` (Q4_K_XL) @ **128 k ctx** | ✅ load + generate + thinking + `/stats` |
+| 🟩 NVIDIA A100 40 GB | llama.cpp · CUDA | `gemma-4-31B-it-qat-GGUF` (Q4_K_XL) | ✅ load + generate + tool calls |
+| 🟩 NVIDIA A100 40 GB | llama.cpp · CUDA | `Qwen-AgentWorld-35B-A3B-GGUF` (Q4_K_M) | 🟡 runs (user-driven) |
+| 🟩 NVIDIA A100 40 GB | llama.cpp · CUDA | `GLM-5.2-GGUF` (Q4_K_M, split) | 🟡 quant/metadata only |
+| 🖥️ Linux/macOS · CPU | llama.cpp | Qwen2.5-0.5B GGUF | ✅ CI smoke |
+
+The NVIDIA bring-up surfaced a nice property: **hybrid** models (Qwen3.6 — only
+16 of 64 layers are full-attention, the rest linear DeltaNet) have a tiny KV
+cache and fit huge context, while **dense** 31B models (gemma-4) have a big KV
+and the window auto-backs-off to fit. Ran a combo we don't list? A one-line PR
+note (model + GPU + what you ran) is gold. ❤️
+
+## 🩺 Troubleshooting & FAQ
+
+<details><summary>🟩 <b>Loads, but my NVIDIA GPU is idle / it's on CPU</b></summary>
+
+`llama-cpp-python` was built CPU-only. Re-run the **installer** (not bare pip) —
+it builds the CUDA variant — then verify the lib is linked:
+
+```sh
+python -c "import llama_cpp, glob, pathlib as p; \
+  print(glob.glob(str(p.Path(llama_cpp.__file__).parent/'lib'/'*cuda*')) or 'NO CUDA — rebuild')"
+```
+
+`uv` caches the built wheel by sdist hash and ignores `CMAKE_ARGS`, so a manual
+rebuild needs `uv cache clean llama-cpp-python` first. `scripts/install_deps.py`
+handles all of this.
+</details>
+
+<details><summary>💥 <b><code>api_error: llama_decode returned 1</code> / "ran for minutes then failed"</b></summary>
+
+The context window filled (no free KV slot). This is fixed: the turn now ends
+cleanly and you can just continue. The window is also auto-sized to the model now
+(no more 16 k cap) — upgrade if you're on an older build.
+</details>
+
+<details><summary>📏 <b>"Only 16K context — this model handles way more"</b></summary>
+
+Fixed — context is sized to the model's trained length and the GPU's free memory
+(e.g. Qwen3.6-27B → 128 k on a 40 GB card). Force it with `KAS_CTX=N`, or raise/
+lower the ceiling with `KAS_CTX_MAX`.
+</details>
+
+<details><summary>🧨 <b><code>Failed to create llama_context</code> on load</b></summary>
+
+The KV cache for that context didn't fit VRAM. kas auto-backs-off the window, but
+you can cap it directly: `KAS_CTX_MAX=32768 kas serve --model …`. Flash Attention
+(on by default) is required for sliding-window models like gemma — don't set
+`KAS_FLASH_ATTN=0` on those.
+</details>
+
+<details><summary>🔤 <b>Garbage output / control markers leak (<code>&lt;|im_end|&gt;</code>, <code>&lt;turn|&gt;</code>)</b></summary>
+
+Both were GGUF-backend bugs (a missing BOS token; un-stopped scaffolding markers)
+and are fixed — upgrade `kas`. If a new model leaks a marker, it's a dialect gap;
+open an issue with the model id.
+</details>
+
+<details><summary>📥 <b>Which quant? / <code>No file found *Q4_K_M.gguf</code></b></summary>
+
+Multi-quant repos vary wildly. kas auto-picks a 4-bit K-quant and logs the
+alternatives on load — pin one with `--quant Q4_K_XL` (or `KAS_GGUF_QUANT`), or an
+exact file with `KAS_GGUF_FILE`.
+</details>
+
+<details><summary>⏳ <b><code>kas serve</code> looks frozen on first load</b></summary>
+
+It's downloading a multi-GB GGUF. The server now prints the live download/load
+tail; `kas serve --logs` shows full progress. Big repos just take a while.
+</details>
+
+<details><summary>📊 <b><code>/stats</code> shows no GPU on NVIDIA</b></summary>
+
+Needs `nvidia-smi` on PATH (ships with the driver). With it, `/stats` shows VRAM
+used/total + utilization.
+</details>
+
+## 📂 Layout
 
 Hexagonal (ports & adapters) — domain logic in `core/`, edges as `ports/`
 Protocols, concrete I/O in `adapters/`. See
