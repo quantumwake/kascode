@@ -3,6 +3,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/quantumwake/kas/actions/workflows/ci.yml"><img src="https://github.com/quantumwake/kas/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI — lint · types · tests · coverage" /></a>
+  <a href="https://github.com/quantumwake/kas/actions/workflows/llama-cpp.yml"><img src="https://github.com/quantumwake/kas/actions/workflows/llama-cpp.yml/badge.svg?branch=main" alt="llama.cpp / GGUF backend" /></a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/%F0%9F%A4%96%20local--agents-ff9d00?style=for-the-badge&labelColor=111111" />
   <img src="https://img.shields.io/badge/%F0%9F%94%8C%20offline--first-ff9d00?style=for-the-badge&labelColor=111111" />
   <img src="https://img.shields.io/badge/%F0%9F%8D%8E%20MLX-Apple%20GPU-ff9d00?style=for-the-badge&labelColor=111111" />
@@ -255,8 +260,8 @@ kas-server                run the server in the foreground directly
 
 ## 🧠 Models
 
-Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
-`make start MODEL=…`. On 128 GB, options include:
+🍎 **On Apple Silicon (MLX)** — default `mlx-community/Qwen3.6-27B-4bit`. Switch
+live with `/model`, or `make start MODEL=…`. On 128 GB, options include:
 
 ```text
   Qwen3.6-27B-4bit              ~15 GB   default · dense
@@ -264,6 +269,9 @@ Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
   Qwen3-Next-80B-A3B-4bit       ~42 GB   bigger, same A3B speed class
   gpt-oss-120b (MXFP4)          ~60 GB   strong; harmony dialect supported
 ```
+
+🟩 **On NVIDIA (GGUF)** — point `--model` at any Hugging Face GGUF repo and kas
+auto-picks the quant (`--quant` to pin one): see [🟩 NVIDIA / CUDA](#-nvidia--cuda).
 
 Tool calling is parsed per model family (qwen / llama / mistral / harmony /
 hermes / deepseek / kimi / gemma) — see the **Models × dialect** table below.
