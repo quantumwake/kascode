@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/kas.png" alt="K.A.S — Kasra's Agentic Shell, running in the terminal" width="100%" />
+  <img src="docs/kas-agent.gif" alt="K.A.S — Kasra's Agentic Shell, running in the terminal" width="100%" />
 </p>
 
 <p align="center">
@@ -11,14 +11,6 @@
 (MLX) or NVIDIA (llama.cpp/GGUF) — behind an **Anthropic Messages-compatible
 server**, driven by an agentic TUI. Offline, no telemetry: tool use, streaming,
 thinking, subagents, KV-cache continuation, and local recall, all on your iron.
-
-```mermaid
-flowchart LR
-    kas["🖥️ kas<br/>agent + TUI"] -->|"POST /v1/messages"| srv["kas-server<br/>FastAPI · SSE"]
-    srv -->|"mlx_lm"| apple["🍎 Apple GPU · MLX"]
-    srv -->|"llama-cpp-python"| nvidia["🟩 NVIDIA · GGUF"]
-    srv -.->|"SSE: text · thinking · tool_use"| kas
-```
 
 ## Install
 
