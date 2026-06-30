@@ -180,3 +180,14 @@ chat = to_chat_messages(
 assert chat[0]["content"] == "<think>\nplan\n</think>\n\nDone.", chat
 
 print("qwen dialect tests passed")
+
+# 14. gemma-4 declares the scaffolding stop-strings it emits so they don't leak
+#     into the visible answer (<turn|> closes a turn, <|tool_response> is its
+#     await-result signal after a tool call). The engine merges these into its
+#     stop set; this guards against them being dropped from the dialect.
+from server.prompting.dialects import GemmaDialect
+
+assert "<turn|>" in GemmaDialect.stop_strings, GemmaDialect.stop_strings
+assert "<|tool_response>" in GemmaDialect.stop_strings, GemmaDialect.stop_strings
+
+print("gemma stop-string tests passed")

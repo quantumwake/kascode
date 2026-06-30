@@ -257,12 +257,18 @@ class LlamaCppEngine:
         while True:
             log.info(
                 "loading %s (n_gpu_layers=%s, n_ctx=%s, flash_attn=%s) ...",
-                model_id, n_gpu_layers, n_ctx, flash_attn,
+                model_id,
+                n_gpu_layers,
+                n_ctx,
+                flash_attn,
             )
             try:
                 self._llm = ctor(
-                    **src, n_gpu_layers=n_gpu_layers, n_ctx=n_ctx,
-                    flash_attn=flash_attn, verbose=False,
+                    **src,
+                    n_gpu_layers=n_gpu_layers,
+                    n_ctx=n_ctx,
+                    flash_attn=flash_attn,
+                    verbose=False,
                 )
                 break
             except (ValueError, RuntimeError, MemoryError) as exc:
@@ -278,8 +284,12 @@ class LlamaCppEngine:
         self.n_layers = n_gpu_layers if n_gpu_layers >= 0 else None
         self.dialect = detect_dialect(self._chat_template, self.model_id)
         self._stop_tokens = self._eog_tokens()
+        self._is_eog = self._resolve_eog_fn()  # llama.cpp's authoritative EOG flag
         # Turn-end markers matched as STRINGS in the (special-rendered) output —
-        # the reliable backstop when a GGUF's eot token id is missing/wrong.
+        # the reliable backstop when a GGUF's eot token id is missing/wrong. The
+        # generic set covers most chat models; the active dialect adds its own
+        # family-specific scaffolding (e.g. gemma-4's <turn|> / <|tool_response>),
+        # which would otherwise leak into the visible answer.
         self._text_stops = (
             "<end_of_turn>",
             "<|im_end|>",
@@ -287,6 +297,7 @@ class LlamaCppEngine:
             "<|endoftext|>",
             "<eos>",
             "<|end|>",
+            *getattr(self.dialect, "stop_strings", ()),
         )
         log.info(
             "loaded in %.1fs (dialect: %s, stop-tokens: %s)",
@@ -315,7 +326,14 @@ class LlamaCppEngine:
                         stops.add(t)
                 except Exception:
                     pass
-        for marker in ("<end_of_turn>", "<|im_end|>", "<|eot_id|>", "<|end|>"):
+        markers = (
+            "<end_of_turn>",
+            "<|im_end|>",
+            "<|eot_id|>",
+            "<|end|>",
+            *getattr(self.dialect, "stop_strings", ()),  # dialect scaffolding (gemma <turn|> …)
+        )
+        for marker in markers:
             try:
                 ids = self._llm.tokenize(marker.encode("utf-8"), add_bos=False, special=True)
                 if len(ids) == 1 and ids[0] >= 0:  # a real single special token
@@ -323,6 +341,33 @@ class LlamaCppEngine:
             except Exception:
                 pass
         return stops or {self._llm.token_eos()}
+
+    def _resolve_eog_fn(self):
+        """A callable(token_id)->bool backed by llama.cpp's OWN end-of-generation
+        flag — the authoritative answer to 'should generation stop here'. This is
+        what catches a model's real end token when token_eos/eot are wrong or the
+        marker isn't a single token we can pre-tokenize (e.g. <|im_end|> leaking
+        through for some GGUFs). Best-effort and self-validating: it smoke-tests
+        the binding against the known-EOG eos token at load and falls back to a
+        no-op (current behaviour) if the binding/pointer shape doesn't match."""
+        try:
+            import llama_cpp
+
+            model = self._llm._model  # low-level _LlamaModel wrapper
+            eos = int(self._llm.token_eos())
+            # Prefer the current vocab-based API; fall back to the model-based shim.
+            get_vocab = getattr(llama_cpp, "llama_model_get_vocab", None)
+            if get_vocab is not None and hasattr(llama_cpp, "llama_vocab_is_eog"):
+                vocab = get_vocab(model.model)
+                fn = llama_cpp.llama_vocab_is_eog
+                if bool(fn(vocab, eos)):  # eos MUST be eog — proves the call works
+                    return lambda t: bool(fn(vocab, t))
+            fn = llama_cpp.llama_token_is_eog
+            if bool(fn(model.model, eos)):
+                return lambda t: bool(fn(model.model, t))
+        except Exception as exc:
+            log.warning("EOG flag unavailable (%s); relying on token/string stops", exc)
+        return lambda t: False
 
     # --- tokenization --------------------------------------------------------
 
@@ -441,7 +486,7 @@ class LlamaCppEngine:
                     if self._cancel.is_set():
                         finish = "stop"
                         return
-                    if tok in self._stop_tokens:  # eos / eot / <end_of_turn> / …
+                    if tok in self._stop_tokens or self._is_eog(tok):  # eos/eot/EOG flag
                         finish = "stop"
                         return
                     gen_ids.append(tok)
@@ -494,20 +539,39 @@ class LlamaCppEngine:
                 if "llama_decode" not in str(exc):
                     raise
                 if yielded:
-                    log.warning("llama_decode failed mid-generation (KV full?); "
-                                "ending turn early — continue to resume (%s)", exc)
+                    log.warning(
+                        "llama_decode failed mid-generation (KV full?); "
+                        "ending turn early — continue to resume (%s)",
+                        exc,
+                    )
                     finish = "length"
                 else:
-                    log.warning("llama_decode failed on prefill; clearing KV, "
-                                "retrying cold (%s)", exc)
+                    log.warning(
+                        "llama_decode failed on prefill; clearing KV, retrying cold (%s)", exc
+                    )
                     gen_ids.clear()
                     text, finish, cached = "", "length", 0
                     try:
                         self._llm.reset()
                     except Exception:
                         pass
-                    for chunk in _drive(reset=True):
-                        yield chunk
+                    # The cold retry can ALSO fail when the prompt itself exceeds
+                    # n_ctx (the conversation outgrew the window) — there's no KV
+                    # slot for even the prefill. End the turn gracefully rather than
+                    # 500-ing; the agent compacts and retries with a shorter prompt.
+                    try:
+                        for chunk in _drive(reset=True):
+                            yielded = True
+                            yield chunk
+                    except RuntimeError as exc2:
+                        if "llama_decode" not in str(exc2):
+                            raise
+                        log.warning(
+                            "cold retry failed too (prompt > ctx of %s?); ending turn (%s)",
+                            self.context_length,
+                            exc2,
+                        )
+                        finish = "length"
             self.stats = {"active": False}
             # The cache now holds the prompt + every generated token except the
             # last (never fed back) — mirrors the MLX backend's accounting.

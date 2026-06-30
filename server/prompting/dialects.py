@@ -34,6 +34,11 @@ class GemmaDialect:
     text_markers = {CH_OPEN: "think_header", TC_OPEN: "tool_call"}
     think_close = CH_CLOSE
     tool_close = TC_CLOSE
+    # Turn-end / scaffolding markers gemma-4 EMITS that must stop generation so
+    # they don't leak into the answer: <turn|> closes a text turn, and
+    # <|tool_response> is gemma's "await the tool result" signal after a tool call.
+    # gemma-4 uses these — NOT gemma-2/3's <end_of_turn> — which is why they leaked.
+    stop_strings = ("<turn|>", "<|tool_response>")
 
     def initial_state(self, thinking_enabled: bool) -> str:
         return "text"
