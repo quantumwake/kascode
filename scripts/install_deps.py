@@ -17,6 +17,7 @@ Run:  python -m scripts.install_deps            # auto-detect + install for THIS
 
 import argparse
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -51,11 +52,60 @@ def _llamacpp(python: str, cmake: str | None) -> list[str]:
     return ["sh", "-c", build]
 
 
+def _cuda_tag() -> str:
+    """abetlen's prebuilt-wheel tag for the host's CUDA (cu118 / cu121..cu125),
+    capped at the highest published. Forward-compatible: a cu124 wheel runs on a
+    newer 12.x runtime. Defaults to cu124 if nvcc isn't readable."""
+    try:
+        out = subprocess.run(
+            ["nvcc", "--version"], capture_output=True, text=True, timeout=5
+        ).stdout
+        m = re.search(r"release (\d+)\.(\d+)", out)
+        if m:
+            major, minor = int(m.group(1)), int(m.group(2))
+            if major == 11:
+                return "cu118"
+            if major == 12:
+                return f"cu12{min(minor, 5)}"
+    except Exception:
+        pass
+    return "cu124"
+
+
+def _has_cuda_check(python: str) -> str:
+    """Shell test: exit 0 if the installed llama_cpp actually carries a CUDA lib."""
+    py = (
+        "import glob,pathlib,sys,llama_cpp as L; "
+        "sys.exit(0 if glob.glob(str(pathlib.Path(L.__file__).parent/'lib'/'*cuda*')) else 1)"
+    )
+    return f"{shlex.quote(python)} -c {shlex.quote(py)}"
+
+
 # --- one builder per accelerator -------------------------------------------
 
 
 def install_deps_cuda(python: str) -> list[str]:
-    return _llamacpp(python, LLAMACPP_CMAKE["cuda"])
+    """CUDA: try the prebuilt wheel FIRST (seconds), verify it really links the
+    CUDA backend, and fall back to a from-source build (minutes) only if not.
+    The verify matters because a plain index resolve can silently grab the CPU
+    sdist; the source path also clears uv's CMAKE_ARGS-blind wheel cache."""
+    tag = _cuda_tag()
+    index = f"https://abetlen.github.io/llama-cpp-python/whl/{tag}"
+    src = (
+        "uv cache clean llama-cpp-python >/dev/null 2>&1; "
+        f"CMAKE_ARGS={shlex.quote(LLAMACPP_CMAKE['cuda'])} uv pip install --python "
+        f"{shlex.quote(python)} --no-binary llama-cpp-python --reinstall llama-cpp-python "
+        "llama-cpp-python"
+    )
+    cmd = (
+        f"echo 'trying prebuilt CUDA wheel ({tag})...'; "
+        f"uv pip install --python {shlex.quote(python)} --reinstall llama-cpp-python "
+        f"--extra-index-url {index} --index-strategy unsafe-best-match "
+        "llama-cpp-python >/dev/null 2>&1 || true; "
+        f"if {_has_cuda_check(python)}; then echo 'prebuilt CUDA wheel OK (no compile)'; "
+        f"else echo 'no CUDA in wheel — building from source (a few minutes)...'; {src}; fi"
+    )
+    return ["sh", "-c", cmd]
 
 
 def install_deps_rocm(python: str) -> list[str]:
@@ -96,7 +146,12 @@ def main(argv: list[str] | None = None) -> int:
     if cmd is None:
         print(f"[{gpu}] MLX is the backend here — no llama.cpp build needed.")
         return 0
-    note = "GPU build (compiles llama.cpp, a few minutes)" if gpu in LLAMACPP_CMAKE else "CPU build"
+    if gpu == "cuda":
+        note = "GPU backend (prebuilt wheel if available, else a source compile)"
+    elif gpu in LLAMACPP_CMAKE:
+        note = "GPU backend (source compile, a few minutes)"
+    else:
+        note = "CPU backend"
     print(f"[{gpu}] llama.cpp {note}:\n  {' '.join(cmd)}")
     if a.show:
         return 0
