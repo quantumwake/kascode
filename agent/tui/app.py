@@ -533,22 +533,38 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
     def hide_viz_panel(self) -> None:
         self.query_one("#vizpanel", Static).display = False
 
+    def _repin_body_after(self, was_pinned: bool) -> None:
+        """Toggling the thinking pane resizes #body, which leaves its scroll offset
+        no longer at the bottom — so the sticky-tail in body_write stops following
+        new output. If the body WAS pinned to the bottom, re-pin it once the layout
+        settles (respect a deliberate scroll-up by doing nothing when it wasn't)."""
+        if was_pinned:
+            body = self.query_one("#body", RichLog)
+            self.call_after_refresh(body.scroll_end, animate=False)
+
     def update_thinking(self, lines) -> None:
         """Show the model's in-flight reasoning in a small bounded pane (its last
         few lines), so you can watch it actually work — instead of the chain of
         thought either flooding the transcript or being invisible behind a tok/s
         counter. Collapsed to a one-line marker by hide_thinking when reasoning ends."""
-        body = "\n".join(lines[-3:])
-        t = Text("💭 thinking…\n", style="dim")
-        t.append(body, style="dim italic")
         pane = self.query_one("#thinking", Static)
+        was_pinned = self.query_one("#body", RichLog).is_vertical_scroll_end
+        appearing = not pane.display
+        t = Text("💭 thinking…\n", style="dim")
+        t.append("\n".join(lines[-3:]), style="dim italic")
         pane.update(t)
         pane.display = True
+        if appearing:  # only the show transition resizes #body
+            self._repin_body_after(was_pinned)
 
     def hide_thinking(self) -> None:
         pane = self.query_one("#thinking", Static)
+        was_pinned = self.query_one("#body", RichLog).is_vertical_scroll_end
+        disappearing = bool(pane.display)
         pane.update("")
         pane.display = False
+        if disappearing:
+            self._repin_body_after(was_pinned)
 
     def body_write(self, renderable) -> None:
         log = self.query_one("#body", RichLog)

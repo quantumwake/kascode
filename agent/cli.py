@@ -66,6 +66,34 @@ def _log_tail(logf) -> str:
     return frags[-1] if frags else ""
 
 
+def _pids_on_port(port: int) -> list[int]:
+    """PIDs LISTENING on the port (via lsof). Lets `--stop` kill a server that
+    isn't in our pidfile — a stale pidfile, or one started via bare `kas-server`
+    or `make start` — instead of leaving it holding the GPU and blocking the port."""
+    try:
+        out = subprocess.run(
+            ["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        ).stdout
+        return sorted({int(x) for x in out.split()})
+    except Exception:
+        return []
+
+
+def _signal_pid(p: int, sig) -> None:
+    """Signal a process — its whole group where the OS supports it (the daemon is
+    its own session), so a stray child can't keep the GPU/port."""
+    try:
+        if hasattr(os, "getpgid"):
+            os.killpg(os.getpgid(p), sig)
+        else:
+            os.kill(p, sig)
+    except OSError:
+        pass
+
+
 def _wait_for_server(base: str, proc: subprocess.Popen, logf=None, stall_polls: int = 120) -> bool:
     """Poll base/v1/models until it answers; False if the process dies or stalls.
 
@@ -197,15 +225,25 @@ def serve_main(argv: list[str]) -> None:
             return None
 
     if a.stop:
-        p = pid()
-        if p:
-            os.killpg(os.getpgid(p), signal.SIGTERM) if hasattr(os, "getpgid") else os.kill(
-                p, signal.SIGTERM
-            )
-            pidf.unlink(missing_ok=True)
-            print(f"stopped (pid {p})")
-        else:
+        # Kill BOTH the pidfile-tracked process AND anything still LISTENING on the
+        # port — a server started via bare `kas-server` / `make start`, or left by a
+        # stale pidfile, would otherwise keep holding the GPU (the old `--stop` only
+        # knew the pidfile, so it reported "not running" while a model stayed loaded).
+        targets = [p for p in (pid(),) if p]
+        targets += [op for op in _pids_on_port(a.port) if op not in targets]
+        pidf.unlink(missing_ok=True)
+        if not targets:
             print("not running")
+            return
+        for t in targets:  # graceful first
+            _signal_pid(t, signal.SIGTERM)
+        for _ in range(25):  # give the model up to ~5s to release VRAM + the port
+            if not _pids_on_port(a.port):
+                break
+            time.sleep(0.2)
+        for t in _pids_on_port(a.port):  # forceful for stragglers
+            _signal_pid(t, signal.SIGKILL)
+        print(f"stopped (pid {', '.join(str(t) for t in targets)})")
         return
     if a.status:
         p = pid()
@@ -243,6 +281,16 @@ def serve_main(argv: list[str]) -> None:
 
     if pid():
         print(f"already running (pid {pid()}) — `kas serve --stop` first")
+        return
+    # An untracked listener (bare kas-server, make start, a stale daemon) would make
+    # the new server abort on its port preflight — surface that clearly up front
+    # rather than as a cryptic "exited early" after the spawn.
+    if owners := _pids_on_port(a.port):
+        owners_s = ", ".join(str(o) for o in owners)
+        print(
+            f"port {a.port} already in use (pid {owners_s}) — `kas serve --stop` "
+            f"frees it, or use --port <N>"
+        )
         return
 
     # daemonize: spawn the SEPARATE kas-server process, detached, then wait.
