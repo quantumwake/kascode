@@ -21,7 +21,9 @@ import json
 import logging
 import os
 import pathlib
+import shutil
 import struct
+import subprocess
 import threading
 import time
 from collections.abc import Iterator
@@ -31,6 +33,42 @@ from ..core.cache import longest_common_prefix
 from ..core.ports import GenChunk
 
 log = logging.getLogger("kas.llama_cpp")
+
+# Resolved once: the nvidia-smi path on NVIDIA hosts, else None (cheap no-op on
+# Metal/ROCm/CPU). Used for GPU memory in /stats — the MLX backend reports Metal
+# memory, but llama.cpp on CUDA had no GPU figure at all.
+_NVIDIA_SMI = shutil.which("nvidia-smi")
+_GPU_CACHE: dict[str, Any] = {"t": 0.0, "val": None}
+
+
+def _nvidia_gpu_mem() -> tuple[float, float, int] | None:
+    """(used_gb, total_gb, util_pct) for GPU 0 from nvidia-smi, or None if not an
+    NVIDIA host / unreadable. Cached ~1s — /stats polls once a second and a
+    subprocess per poll is wasteful."""
+    if not _NVIDIA_SMI:
+        return None
+    now = time.time()
+    if now - _GPU_CACHE["t"] < 1.0:
+        return _GPU_CACHE["val"]
+    val = None
+    try:
+        out = subprocess.run(
+            [
+                _NVIDIA_SMI,
+                "--query-gpu=memory.used,memory.total,utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        ).stdout.strip()
+        used, total, util = (x.strip() for x in out.splitlines()[0].split(","))
+        val = (round(int(used) / 1024, 2), round(int(total) / 1024, 2), int(util))
+    except Exception:
+        val = None
+    _GPU_CACHE["t"], _GPU_CACHE["val"] = now, val
+    return val
+
 
 # GGUF scalar value-type byte sizes (the enum from the GGUF spec). Strings (8) and
 # arrays (9) are variable-length and handled separately.
@@ -194,22 +232,25 @@ class LlamaCppEngine:
         return min(shards, key=len) if shards else (glob or "*.gguf")
 
     def _choose_ctx(self, src: dict) -> int:
-        """Size the context window to the model itself.
+        """Size the context window to the model — start as large as it was trained
+        for, and let _load's backoff shrink it to what the GPU can actually hold.
 
-        Precedence: explicit KAS_CTX wins; otherwise use the model's own trained
-        context length (`<arch>.context_length`, read straight from the GGUF header
-        — no weights, no KV allocated), capped by KAS_CTX_MAX so a 128k-context
-        model doesn't allocate a KV cache that OOMs the GPU. 8192 was far too small
-        for agentic coding: one long 'thinking' pass overran it and llama.cpp
-        raised 'llama_decode returned 1' (no free KV slot)."""
+        Precedence: explicit KAS_CTX wins; otherwise n_ctx = min(trained length,
+        KAS_CTX_MAX). The KV cost per token is wildly model-specific — a dense 31B
+        (gemma) has a big KV and tops out ~24k on a 40GB card, while a hybrid 27B
+        (Qwen3.6: only 16 of 64 layers are full-attention, the rest are linear
+        DeltaNet) fits 128k+ on the SAME card. There's no portable formula, so
+        rather than a flat conservative cap (which throttled the big-context
+        models) we aim high and back off on the actual allocation failure. 8192
+        was far too small for agentic coding: a long prompt+output overran it and
+        llama.cpp raised 'llama_decode returned 1' (no free KV slot)."""
         env = os.environ.get("KAS_CTX")
         if env:
             return int(env)
-        # Cap so a 256k/1M-context model doesn't try to allocate a KV cache that
-        # dwarfs the GPU. 16384 comfortably fits a 30B-class model on a 40GB card
-        # (a 31B + full-size SWA cache at 32768 does NOT) and is ample for agentic
-        # coding; _load backs off further if even this won't fit smaller hardware.
-        cap = int(os.environ.get("KAS_CTX_MAX", "16384"))
+        # A generous ceiling, not a guess at what fits: _load backs off from here
+        # if the KV won't allocate. Caps the 256k/1M-context models to a sane first
+        # attempt; raise KAS_CTX_MAX on big GPUs, lower it to force a smaller window.
+        cap = int(os.environ.get("KAS_CTX_MAX", "131072"))
         path = src.get("model_path")
         if not path:  # HF repo -> resolve the (cached) local file to read its header
             try:
@@ -431,6 +472,8 @@ class LlamaCppEngine:
             scores = getattr(self._llm, "scores", None)
             if scores is None:
                 scores = getattr(self._llm, "_scores", None)
+            if scores is None:
+                return None
             row = max(0, int(getattr(self._llm, "n_tokens", 1)) - 1)
             logits = np.asarray(scores[row], dtype="float64")
             if logits.ndim != 1 or logits.size == 0:
@@ -661,7 +704,17 @@ class LlamaCppEngine:
         return {"pings": self.ping_count, "last_ping_age": age}
 
     def system_stats(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "layers": self.n_layers,
             "context_length": getattr(self, "context_length", None),
         }
+        # GPU memory for the /stats panel. On NVIDIA, nvidia-smi gives device-wide
+        # used/total; map used->gpu_active_gb, total->gpu_peak_gb so the panel
+        # renders "used/total GB" with a fill gauge (same keys the MLX backend uses).
+        mem = _nvidia_gpu_mem()
+        if mem is not None:
+            used_gb, total_gb, util = mem
+            out["gpu_active_gb"] = used_gb
+            out["gpu_peak_gb"] = total_gb
+            out["gpu_util"] = util
+        return out

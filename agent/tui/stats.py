@@ -76,6 +76,9 @@ class StatsPanel:
             if gp:
                 t.append_text(self._gauge(ga / gp if gp else 0))
             t.append(f" {ga}/{gp}GB  " if gp else f" {ga}GB  ", style=C)
+            gu = s.get("gpu_util")
+            if gu is not None:
+                t.append(f"{gu}% util  ", style=C)
         if s.get("tps"):
             t.append("tok/s ", style=L)
             t.append(f"{s['tps']}  ", style=C)
